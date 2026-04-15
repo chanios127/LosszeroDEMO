@@ -120,15 +120,14 @@ function AssistantBubble({ msg }: { msg: ChatMessage }) {
 
   return (
     <div className="flex flex-col gap-2 items-start max-w-[85%]">
-      {/* Think blocks above the bubble */}
-      {thinkSegments.map((seg, i) => (
+      {/* All think blocks merged into one toggle above the bubble */}
+      {thinkSegments.length > 0 && (
         <ThinkBlock
-          key={i}
-          content={seg.content}
-          closed={seg.closed}
+          content={thinkSegments.map((s) => s.content).join("\n\n")}
+          closed={thinkSegments.every((s) => s.closed)}
           isStreaming={msg.isStreaming}
         />
-      ))}
+      )}
 
       {/* Message bubble */}
       <div className="w-full space-y-2 rounded-2xl rounded-tl-sm border border-slate-800 bg-slate-900/50 px-4 py-3">
