@@ -33,6 +33,10 @@ from tools.sp_call import SPCallTool
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 자동 로그 억제
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 MAX_HISTORY = int(os.environ.get("MAX_CONVERSATION_HISTORY", "20"))
 
 # In-memory stores
@@ -42,9 +46,38 @@ _conversations: dict[str, list[Message]] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import httpx as _httpx
+
+    host = os.environ.get("SERVER_HOST", "0.0.0.0")
+    port = os.environ.get("SERVER_PORT", "8000")
+    llm_base = os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1").rstrip("/")
+
+    print("─" * 50)
+    print(f"  Server   : http://{host}:{port}")
+
+    # LLM 서버 health
+    try:
+        async with _httpx.AsyncClient(timeout=3.0) as c:
+            r = await c.get(f"{llm_base}/models")
+        models = r.json().get("data", [])
+        names = ", ".join(m.get("id", "") for m in models[:3]) or "—"
+        print(f"  LLM      : ✔  {llm_base}  [{names}]")
+    except Exception as e:
+        print(f"  LLM      : ✘  {llm_base}  ({e})")
+
+    # MSSQL health
+    try:
+        await init_pool()
+        server = os.environ.get("MSSQL_SERVER", "?")
+        db = os.environ.get("MSSQL_DATABASE", "?")
+        print(f"  MSSQL    : ✔  {server} / {db}")
+    except Exception as e:
+        print(f"  MSSQL    : ✘  {e}")
+
     registry = load_registry()
-    logger.info("Domain registry: %d domains loaded", len(registry))
-    await init_pool()
+    print(f"  Domains  : {len(registry)} loaded")
+    print("─" * 50, flush=True)
+
     yield
     await close_pool()
 
@@ -117,14 +150,103 @@ async def start_query(body: QueryRequest):
             domain_context=domain_ctx,
         )
 
+        # ── 터미널 로그 상태 ──────────────────────────────────────
+        W = 60
+        print("═" * W)
+        print(f"👤  {body.query}")
+        print("═" * W, flush=True)
+
+        # <think> 블록 실시간 감지용 버퍼
+        _buf = ""          # 청크 누적 버퍼
+        _in_think = False  # think 블록 진입 여부
+        _ans_started = False  # 💬 접두사 출력 여부
+        # ─────────────────────────────────────────────────────────
+
         final_answer = ""
         async for event in loop.run(body.query, history=history):
             _sessions[stream_key].append(event)
-            if event.type == EventType.FINAL:
+
+            # ── 터미널 출력 ───────────────────────────────────────
+            if event.type == EventType.TOOL_START:
+                # think 중이었으면 줄바꿈 정리
+                if _in_think or _ans_started:
+                    print(flush=True)
+                    _in_think = False
+                    _ans_started = False
+                args = json.dumps(event.input, ensure_ascii=False)
+                print(f"🔧 [T{event.turn}] {event.tool}({args})", flush=True)
+
+            elif event.type == EventType.TOOL_RESULT:
+                if event.error:
+                    print(f"   ❌ {event.error}", flush=True)
+                elif event.rows is not None:
+                    print(f"   → {event.rows} rows", flush=True)
+                else:
+                    snippet = str(event.output)[:200].replace("\n", " ")
+                    if len(str(event.output)) > 200:
+                        snippet += "..."
+                    print(f"   → {snippet}", flush=True)
+
+            elif event.type == EventType.LLM_CHUNK:
+                _buf += event.delta
+                # <think>/<\/think> 감지하며 안전 구간 출력
+                while True:
+                    if not _in_think:
+                        ti = _buf.find("<think>")
+                        if ti == -1:
+                            safe = _buf.rfind("<") if "<" in _buf else len(_buf)
+                            if safe > 0:
+                                text = _buf[:safe]
+                                if text:
+                                    if not _ans_started:
+                                        print("💬 ", end="", flush=True)
+                                        _ans_started = True
+                                    print(text, end="", flush=True)
+                                _buf = _buf[safe:]
+                            break
+                        else:
+                            if ti > 0:
+                                before = _buf[:ti]
+                                if not _ans_started:
+                                    print("💬 ", end="", flush=True)
+                                    _ans_started = True
+                                print(before, end="", flush=True)
+                            print("\n🧠 [THINK] ", end="", flush=True)
+                            _in_think = True
+                            _ans_started = False
+                            _buf = _buf[ti + len("<think>"):]
+                    else:
+                        ci = _buf.find("</think>")
+                        if ci == -1:
+                            safe = _buf.rfind("<") if "<" in _buf else len(_buf)
+                            if safe > 0:
+                                print(_buf[:safe], end="", flush=True)
+                                _buf = _buf[safe:]
+                            break
+                        else:
+                            print(_buf[:ci], end="", flush=True)
+                            print()
+                            _in_think = False
+                            _buf = _buf[ci + len("</think>"):]
+
+            elif event.type == EventType.FINAL:
+                # 버퍼 잔여분 출력
+                if _buf:
+                    if not _ans_started and not _in_think:
+                        print("💬 ", end="", flush=True)
+                    print(_buf, end="", flush=True)
+                print()
+                print("═" * W, flush=True)
                 final_answer = event.answer
                 break
-            if event.type == EventType.ERROR:
+
+            elif event.type == EventType.ERROR:
+                if _buf:
+                    print(_buf, end="", flush=True)
+                print(f"\n❌ ERROR: {event.message}", flush=True)
+                print("═" * W, flush=True)
                 break
+            # ─────────────────────────────────────────────────────
 
         _conversations[session_id].append({"role": "user", "content": body.query})
         if final_answer:
