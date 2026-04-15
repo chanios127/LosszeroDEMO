@@ -38,7 +38,7 @@ MSSQL_PASSWORD=pass
 ```bash
 cd backend
 uv sync
-uv run uvicorn main:app --reload    # http://127.0.0.1:8000
+uv ruv run python main.py    # http://127.0.0.1:8000
 ```
 
 ### 3. 프론트엔드

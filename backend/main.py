@@ -205,3 +205,8 @@ async def clear_session(session_id: str):
     for k in keys_to_remove:
         _sessions.pop(k, None)
     return {"deleted": session_id}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, reload_excludes=[".venv"])

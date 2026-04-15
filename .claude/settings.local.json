@@ -85,7 +85,14 @@
       "Bash(curl -v http://localhost:8000/health)",
       "Bash(npx tsc:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(lsb_release -a)",
+      "Bash(python3 -c \"import pyodbc; print\\(pyodbc.drivers\\(\\)\\)\")",
+      "Bash(uv run *)",
+      "Bash(uv python *)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H 'Content-Type: application/json' -d '{\"query\": \"테스트\"}')",
+      "Bash(npm --version)",
+      "Bash(pnpm add *)"
     ]
   }
 }
