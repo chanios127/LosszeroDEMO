@@ -26,6 +26,15 @@ Rules:
   matching the user's language.
 - If the user's intent is ambiguous, ask one clarifying question.
 - When writing SQL, wrap it in <execute_sql>SQL_HERE</execute_sql> tags.
+
+Visualization:
+- The frontend automatically renders charts/tables from tool results (db_query, sp_call).
+- When the user asks for a graph/chart/visualization, you MUST re-query the data \
+  using db_query or sp_call, even if you showed the same data before. \
+  The frontend only visualizes data returned in the current response.
+- Do NOT draw ASCII charts or markdown tables as a substitute for actual data queries.
+- Supported viz types: bar_chart, line_chart, pie_chart, table, number \
+  (auto-detected from result shape).
 """
 
 _SQL_TAG_RE = re.compile(
