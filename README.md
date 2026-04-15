@@ -1,118 +1,52 @@
-# LossZero Demo — Text-to-SQL
+# LLM Harness — ERP 자연어 조회 플랫폼
 
-MSSQL 데이터를 자연어로 조회하는 Text-to-SQL 챗봇 시스템.
+MSSQL 제조업 ERP 데이터를 자연어로 조회하고 시각화하는 에이전트 시스템.
 
 ## 스택
 
 | 레이어 | 기술 |
 |--------|------|
-| Frontend | Next.js 15 (App Router), Tailwind CSS v4, @xyflow/react |
-| Backend | FastAPI, Python 3.11, pyodbc |
+| Frontend | React 18, Vite, Tailwind CSS, Recharts |
+| Backend | FastAPI, Python 3.11+, pyodbc |
+| LLM | Claude API (Anthropic SDK) / LM Studio (OpenAI 호환) |
 | Database | MSSQL (읽기 전용) |
-| LLM | LM Studio (로컬, OpenAI 호환) / Claude API (fallback) |
-| 컨테이너 | Docker Compose |
+| 패키지 | uv (백엔드), pnpm (프론트엔드) |
 
 ---
 
 ## 빠른 시작
 
-### 1. 환경 변수 설정
+### 1. 환경 변수
 
 ```bash
 cp .env.example .env
 ```
 
-`.env`를 열어 MSSQL 접속 정보와 LLM 설정을 입력:
+`.env`에 MSSQL 접속 정보와 LLM API 키 입력:
 
 ```env
-# MSSQL
-MSSQL_SERVER=<host,port>
-MSSQL_DATABASE=<database>
-MSSQL_USER=<username>
-MSSQL_PASSWORD=<password>
-
-# LLM 프로바이더: lm_studio | claude
-LLM_PROVIDER=lm_studio
-
-# LM Studio (로컬 실행 중이어야 함)
-LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
-LM_STUDIO_MODEL=<로드된 모델 이름>
+LLM_PROVIDER=claude
+ANTHROPIC_API_KEY=sk-ant-...
+MSSQL_SERVER=hostname,port
+MSSQL_DATABASE=dbname
+MSSQL_USER=user
+MSSQL_PASSWORD=pass
 ```
 
-### 2. 백엔드 실행
-
-#### Docker (권장)
-
-```bash
-docker compose up --build
-```
-
-백엔드: `http://localhost:8080`
-
-#### 로컬 직접 실행 (개발용)
+### 2. 백엔드
 
 ```bash
 cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+uv sync
+uv run uvicorn main:app --reload    # http://127.0.0.1:8000
 ```
 
-> `next.config.ts`의 프록시 destination을 포트에 맞게 확인하세요.
-
-### 3. 프론트엔드 실행
+### 3. 프론트엔드
 
 ```bash
 cd frontend
-npm install
-npm run dev
-```
-
-브라우저: `http://localhost:3000`
-
----
-
-## 프로젝트 구조
-
-```
-LosszeroDEMO/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI 앱, CORS
-│   │   ├── config.py            # pydantic-settings 환경 변수
-│   │   ├── routers/
-│   │   │   ├── health.py        # GET /health
-│   │   │   └── query.py         # POST /query, GET /query/schema
-│   │   ├── pipeline/
-│   │   │   └── text_to_sql.py   # 질문 → SQL → 실행 파이프라인
-│   │   ├── llm/
-│   │   │   ├── __init__.py      # get_llm_client() 팩토리
-│   │   │   ├── base.py          # LLMClient ABC
-│   │   │   ├── lm_studio.py     # LM Studio (httpx, OpenAI 호환)
-│   │   │   └── claude.py        # Claude API (anthropic SDK)
-│   │   └── mssql/
-│   │       ├── schema.py        # 스키마 조회 + 캐시
-│   │       └── executor.py      # SQL 실행 (pyodbc async 래퍼)
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── layout.tsx       # Root Layout (Server Component)
-│   │   │   ├── page.tsx         # 메인 페이지 ('use client')
-│   │   │   └── globals.css      # Tailwind v4 import + 전역 스타일
-│   │   ├── components/
-│   │   │   ├── Chat/            # ChatPanel, MessageBubble, QueryInput
-│   │   │   ├── Results/         # ResultsPanel, SqlBlock
-│   │   │   └── Schema/          # SchemaGraph (dynamic), SchemaGraphInner
-│   │   ├── api/
-│   │   │   ├── client.ts        # axios 인스턴스
-│   │   │   └── query.ts         # postQuery, getSchema
-│   │   └── types/index.ts       # QueryResponse, TableInfo 등
-│   ├── next.config.ts           # /api/* 프록시 → 백엔드
-│   └── package.json
-├── docker-compose.yml
-├── .env.example
-└── DESIGN.md
+pnpm install
+pnpm dev                             # http://localhost:5173
 ```
 
 ---
@@ -121,45 +55,62 @@ LosszeroDEMO/
 
 | Method | Path | 설명 |
 |--------|------|------|
-| `GET` | `/health` | 헬스 체크 |
-| `POST` | `/query` | `{ "question": "..." }` → SQL + 결과 |
-| `GET` | `/query/schema` | 테이블/컬럼 목록 (캐시) |
-| `GET` | `/query/schema?refresh=true` | 캐시 무효화 후 재조회 |
+| `GET` | `/health` | 서버 상태 + LLM 프로바이더 + 도메인 목록 |
+| `POST` | `/api/query` | 에이전트 실행 시작. `{query, session_id?}` → `{session_id, status}` |
+| `GET` | `/api/stream/{stream_key}` | SSE 이벤트 스트림 |
+| `POST` | `/api/approve/{stream_key}` | HITL 도구 승인/거부. `{approved: bool}` |
+| `DELETE` | `/api/session/{session_id}` | 세션 정리 |
 
-### POST /query 응답 예시
+### SSE 이벤트
 
-```json
-{
-  "question": "최근 주문 10건을 보여줘",
-  "sql": "SELECT TOP 10 * FROM dbo.Orders ORDER BY OrderDate DESC",
-  "results": [...],
-  "error": null
-}
+| 이벤트 | 데이터 |
+|--------|--------|
+| `tool_start` | `{tool, input, turn}` |
+| `tool_result` | `{tool, output, rows, error, turn}` |
+| `llm_chunk` | `{delta}` (스트리밍 텍스트) |
+| `approval_required` | `{tool, input, reason, turn}` |
+| `final` | `{answer, viz_hint, data}` |
+| `error` | `{message}` |
+
+---
+
+## 도메인 레지스트리
+
+LLM이 정확한 테이블/SP를 호출하도록 사전 정의된 스키마 정보.
+
+- 위치: `backend/domains/*.json`
+- 사용자가 직접 작성하거나 `gen_domain.py`로 생성
+- 사용자 질문의 키워드와 매칭되면 자동으로 시스템 프롬프트에 주입
+
+매칭되지 않는 질문은 `explore_schema` 도구를 통해 DB를 직접 탐색 (사용자 승인 필요).
+
+---
+
+## 아키텍처
+
+상세 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md) 참조.
+
+```
+사용자 질문 → POST /api/query
+  → 도메인 매칭 → 스키마 컨텍스트 주입
+  → AgentLoop (최대 10턴)
+    → LLM 호출 → 도구 선택 → 실행 → 결과 반환
+  → SSE 스트리밍 → 프론트엔드 렌더링
 ```
 
 ---
 
-## LLM 설정
+## 환경변수 목록
 
-### LM Studio (기본)
-
-1. LM Studio 실행 → 모델 로드 → Local Server 탭에서 서버 시작 (기본 포트 1234)
-2. `.env`에서 `LLM_PROVIDER=lm_studio`, `LM_STUDIO_MODEL=<모델명>` 설정
-3. Docker에서 실행 시 `LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1` 유지
-
-### Claude API (fallback)
-
-```env
-LLM_PROVIDER=claude
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6
-```
-
----
-
-## 개발 메모
-
-- **포트 충돌**: Docker Desktop이 내부적으로 8000을 사용하므로 외부 포트는 8080으로 설정됨
-- **ReactFlow SSR**: `next/dynamic`으로 `ssr: false` 처리 (`SchemaGraph.tsx` → `SchemaGraphInner.tsx`)
-- **Tailwind v4**: `postcss.config.mjs`에서 `@tailwindcss/postcss` 플러그인 사용 (vite 플러그인 아님)
-- **스키마 캐시**: 서버 재시작 전까지 인메모리 캐시 유지; Schema 탭 "새로고침" 버튼으로 수동 갱신 가능
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `LLM_PROVIDER` | `claude` | `claude` 또는 `lm_studio` |
+| `ANTHROPIC_API_KEY` | — | Claude API 키 |
+| `CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude 모델명 |
+| `LM_STUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio 엔드포인트 |
+| `MSSQL_SERVER` | — | MSSQL 호스트 (예: `host,port`) |
+| `MSSQL_DATABASE` | — | 데이터베이스명 |
+| `MSSQL_USER` | — | DB 사용자 |
+| `MSSQL_PASSWORD` | — | DB 비밀번호 |
+| `AGENT_MAX_TURNS` | `10` | 에이전트 최대 턴 수 |
+| `SP_WHITELIST` | (빈값=전체허용) | SP 호출 허용 목록 (콤마 구분) |
