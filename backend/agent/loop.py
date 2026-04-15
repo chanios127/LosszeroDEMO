@@ -152,10 +152,15 @@ class AgentLoop:
                 messages.append(_make_tool_result_msg(tc.id, err_msg))
                 continue
 
+            # Tools whose results should be treated as visualizable data
+            _DATA_TOOLS = {"db_query", "sp_call"}
+
             try:
                 result = await tool.execute(tc.input)
                 rows = len(result) if isinstance(result, list) else None
-                last_data = result if isinstance(result, list) else None
+                # Only store as viz data if it's a data tool (not metadata like list_tables)
+                if tc.name in _DATA_TOOLS and isinstance(result, list):
+                    last_data = result
 
                 yield ToolResultEvent(
                     tool=tc.name, output=result, rows=rows, turn=turn,

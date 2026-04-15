@@ -3,33 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from typing import Any
 
 from db.connection import get_connection
+from domains.loader import is_sp_whitelisted, get_all_whitelisted_sp_names
 from llm.base import ToolSchema
 from tools.base import Tool
 
 logger = logging.getLogger(__name__)
-
-
-def _get_whitelist() -> list[str]:
-    raw = os.environ.get("SP_WHITELIST", "")
-    return [s.strip() for s in raw.split(",") if s.strip()]
-
-
-def _check_whitelist(sp_name: str) -> None:
-    whitelist = _get_whitelist()
-    if not whitelist:
-        # No whitelist configured — allow all (PoC mode)
-        return
-    for prefix in whitelist:
-        if sp_name.lower().startswith(prefix.lower()):
-            return
-    raise ValueError(
-        f"Stored procedure '{sp_name}' is not in the whitelist. "
-        f"Allowed prefixes: {whitelist}"
-    )
 
 
 class SPCallTool(Tool):
@@ -41,7 +22,7 @@ class SPCallTool(Tool):
     def description(self) -> str:
         return (
             "Execute a whitelisted MSSQL stored procedure with named parameters. "
-            "Use this when you know which SP to call and its parameter values. "
+            "Only procedures registered in sp_whitelist.json are allowed. "
             "Returns result rows as a list of dicts."
         )
 
@@ -54,11 +35,11 @@ class SPCallTool(Tool):
                 "properties": {
                     "sp_name": {
                         "type": "string",
-                        "description": "Exact stored procedure name (e.g. usp_GetProduction).",
+                        "description": "Exact stored procedure name from the whitelist.",
                     },
                     "params": {
                         "type": "object",
-                        "description": "Named parameters as key-value pairs (e.g. {'StartDate': '2026-01-01'}).",
+                        "description": "Named parameters as key-value pairs (e.g. {'@sDt': '2026-01-01'}).",
                         "additionalProperties": True,
                     },
                 },
@@ -70,9 +51,18 @@ class SPCallTool(Tool):
         sp_name: str = input.get("sp_name", "")
         params: dict = input.get("params", {})
 
-        _check_whitelist(sp_name)
+        if not is_sp_whitelisted(sp_name):
+            allowed = get_all_whitelisted_sp_names()
+            raise ValueError(
+                f"'{sp_name}' is not in sp_whitelist.json. "
+                f"Allowed: {sorted(allowed) if allowed else '(none registered)'}"
+            )
 
-        param_str = ", ".join(f"@{k}=?" for k in params)
+        # Strip @ prefix from param keys if present (normalize)
+        clean_params = {
+            k.lstrip("@"): v for k, v in params.items()
+        }
+        param_str = ", ".join(f"@{k}=?" for k in clean_params)
         sql = f"EXEC {sp_name} {param_str}".strip()
 
         async with get_connection() as conn:
@@ -80,7 +70,7 @@ class SPCallTool(Tool):
 
             def _run():
                 cursor = conn.cursor()
-                cursor.execute(sql, list(params.values()))
+                cursor.execute(sql, list(clean_params.values()))
                 if cursor.description:
                     columns = [col[0] for col in cursor.description]
                     rows = cursor.fetchall()

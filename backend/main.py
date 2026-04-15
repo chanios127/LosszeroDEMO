@@ -23,7 +23,7 @@ load_dotenv()
 from agent.events import AgentEvent, EventType
 from agent.loop import AgentLoop
 from db.connection import init_pool, close_pool
-from domains.loader import load_registry, match_domains, get_domain_context
+from domains.loader import load_registry, load_sp_whitelist, match_domains, get_domain_context
 from llm import get_provider
 from llm.base import Message
 from tools.db_query import DBQueryTool
@@ -75,7 +75,9 @@ async def lifespan(app: FastAPI):
         print(f"  MSSQL    : ✘  {e}")
 
     registry = load_registry()
-    print(f"  Domains  : {len(registry)} loaded")
+    sp_wl = load_sp_whitelist()
+    sp_count = sum(len(v.get("procedures", {})) for v in sp_wl.values())
+    print(f"  Domains  : {len(registry)} loaded, {sp_count} SPs whitelisted")
     print("─" * 50, flush=True)
 
     yield

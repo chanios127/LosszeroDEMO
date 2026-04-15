@@ -1,0 +1,38 @@
+{
+  "PM": {
+    "description": "생산",
+    "tables": {
+      "WorkPrdMST": {
+        "description": "작업실적 마스터",
+        "columns": {
+          "workID":  {"type": "int",     "title": "작업실적ID (PK)"},
+          "woID":    {"type": "int",     "title": "작업지시ID (FK)"},
+          "workDt":  {"type": "date",    "title": "작업일자"},
+          "wcCd":    {"type": "varchar", "title": "공정코드"},
+          "pdCd":    {"type": "varchar", "title": "제품코드"},
+          "Qty":     {"type": "decimal", "title": "생산수량"},
+          "BadQty":  {"type": "decimal", "title": "불량수량"}
+        }
+      },
+      "WorkPrdOrdMST": {
+        "description": "작업지시",
+        "columns": {
+          "woID":    {"type": "int",     "title": "작업지시ID (PK)"},
+          "woDt":    {"type": "date",    "title": "지시일자"},
+          "wcCd":    {"type": "varchar", "title": "공정코드"},
+          "pdCd":    {"type": "varchar", "title": "제품코드"},
+          "Qty":     {"type": "decimal", "title": "지시수량"}
+        }
+      },
+      "WorkPrdPlanMST": {
+        "description": "생산계획",
+        "columns": {
+          "planID":  {"type": "int",     "title": "계획ID (PK)"},
+          "planDt":  {"type": "date",    "title": "계획일자"},
+          "pdCd":    {"type": "varchar", "title": "제품코드"},
+          "Qty":     {"type": "decimal", "title": "계획수량"}
+        }
+      }
+    }
+  }
+}
