@@ -1,14 +1,12 @@
 """AgentLoop: generator-pattern multi-turn agent with tool dispatch."""
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from typing import AsyncGenerator, Callable, Awaitable
+from typing import AsyncGenerator
 
 from agent.events import (
     AgentEvent,
-    ApprovalRequestEvent,
     ErrorEvent,
     FinalEvent,
     LLMChunkEvent,
@@ -18,9 +16,6 @@ from agent.events import (
 )
 from llm.base import LLMProvider, LLMEvent, LLMEventType, Message, ToolCall
 from tools.base import Tool
-
-# Type for the approval callback: (tool_name, input) → bool
-ApprovalCallback = Callable[[str, dict], Awaitable[bool]]
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +69,7 @@ def _make_tool_result_msg(tc_id: str, content: str) -> Message:
 
 class AgentLoop:
     """
-    Runs a multi-turn agentic loop:
+    Multi-turn agentic loop:
       LLM call → tool_call? → dispatch → inject result → repeat
     Yields AgentEvent instances for SSE streaming.
     """
@@ -84,23 +79,22 @@ class AgentLoop:
         llm: LLMProvider,
         tools: list[Tool],
         max_turns: int = 10,
-        approval_callback: ApprovalCallback | None = None,
         domain_context: str = "",
     ) -> None:
         self.llm = llm
         self.tools: dict[str, Tool] = {t.name: t for t in tools}
         self.max_turns = max_turns
-        self._approval_callback = approval_callback
         self._domain_context = domain_context
 
     async def run(
         self, user_input: str, history: list[Message] | None = None
     ) -> AsyncGenerator[AgentEvent, None]:
         messages: list[Message] = list(history) if history else []
-        # Inject domain context as system message at the start
+        # Inject domain context as system message
         if self._domain_context:
             messages.insert(0, {"role": "system", "content": self._domain_context})
         messages.append({"role": "user", "content": user_input})
+
         tool_schemas = [t.schema() for t in self.tools.values()]
         last_data: list[dict] | None = None
         answer_parts: list[str] = []
@@ -130,7 +124,6 @@ class AgentLoop:
 
             # No tool call → final answer
             if pending_tool_call is None:
-                # If there was text, add assistant msg for history consistency
                 if full_text:
                     messages.append({"role": "assistant", "content": full_text})
                 viz_hint: VizHint = (
@@ -147,8 +140,7 @@ class AgentLoop:
             tc = pending_tool_call
             yield ToolStartEvent(tool=tc.name, input=tc.input, turn=turn)
 
-            # Always append assistant(tool_use) FIRST, then tool result
-            # This is required by Anthropic's API message ordering
+            # assistant(tool_use) must come BEFORE tool result
             messages.append(_make_assistant_tool_msg(full_text, tc))
 
             tool = self.tools.get(tc.name)
@@ -159,27 +151,6 @@ class AgentLoop:
                 )
                 messages.append(_make_tool_result_msg(tc.id, err_msg))
                 continue
-
-            # HITL: if tool requires approval, pause and wait
-            if tool.requires_approval:
-                yield ApprovalRequestEvent(
-                    tool=tc.name,
-                    input=tc.input,
-                    turn=turn,
-                    reason=f"'{tc.name}' 도구는 DB 스키마를 직접 조회합니다. 승인하시겠습니까?",
-                )
-                if self._approval_callback:
-                    approved = await self._approval_callback(tc.name, tc.input)
-                else:
-                    approved = False  # no callback = deny by default
-
-                if not approved:
-                    deny_msg = "사용자가 이 도구 실행을 거부했습니다."
-                    yield ToolResultEvent(
-                        tool=tc.name, output=None, turn=turn, error=deny_msg
-                    )
-                    messages.append(_make_tool_result_msg(tc.id, deny_msg))
-                    continue
 
             try:
                 result = await tool.execute(tc.input)

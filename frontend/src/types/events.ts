@@ -35,21 +35,12 @@ export interface ErrorEvent {
   message: string;
 }
 
-export interface ApprovalRequestEvent {
-  type: "approval_required";
-  tool: string;
-  input: Record<string, unknown>;
-  turn: number;
-  reason: string;
-}
-
 export type AgentEvent =
   | ToolStartEvent
   | ToolResultEvent
   | LLMChunkEvent
   | FinalEvent
-  | ErrorEvent
-  | ApprovalRequestEvent;
+  | ErrorEvent;
 
 export interface ChatMessage {
   id: string;

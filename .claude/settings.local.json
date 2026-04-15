@@ -92,7 +92,10 @@
       "Bash(uv python *)",
       "Bash(curl -s -X POST http://localhost:8000/api/query -H 'Content-Type: application/json' -d '{\"query\": \"테스트\"}')",
       "Bash(npm --version)",
-      "Bash(pnpm add *)"
+      "Bash(pnpm add *)",
+      "Bash(pnpm exec:*)",
+      "Bash(rm -rf node_modules)",
+      "Bash(pnpm install:*)"
     ]
   }
 }

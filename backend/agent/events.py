@@ -13,7 +13,6 @@ class EventType(str, Enum):
     LLM_CHUNK = "llm_chunk"
     FINAL = "final"
     ERROR = "error"
-    APPROVAL_REQUIRED = "approval_required"
 
 
 VizHint = Literal["bar_chart", "line_chart", "pie_chart", "table", "number"]
@@ -52,15 +51,4 @@ class ErrorEvent(BaseModel):
     message: str
 
 
-class ApprovalRequestEvent(BaseModel):
-    type: Literal[EventType.APPROVAL_REQUIRED] = EventType.APPROVAL_REQUIRED
-    tool: str
-    input: dict[str, Any]
-    turn: int
-    reason: str
-
-
-AgentEvent = (
-    ToolStartEvent | ToolResultEvent | LLMChunkEvent
-    | FinalEvent | ErrorEvent | ApprovalRequestEvent
-)
+AgentEvent = ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent | ErrorEvent

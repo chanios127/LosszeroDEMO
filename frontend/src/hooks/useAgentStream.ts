@@ -5,19 +5,11 @@ import type { AgentEvent, ChatMessage } from "../types/events";
 // State & Actions
 // ---------------------------------------------------------------------------
 
-export interface PendingApproval {
-  tool: string;
-  input: Record<string, unknown>;
-  reason: string;
-  streamKey: string;
-}
-
 interface State {
   messages: ChatMessage[];
   sessionId: string | null;
   isStreaming: boolean;
   error: string | null;
-  pendingApproval: PendingApproval | null;
 }
 
 type Action =
@@ -27,8 +19,6 @@ type Action =
   | { type: "APPEND_DELTA"; delta: string }
   | { type: "SET_FINAL"; answer: string; data: Record<string, unknown>[] | null; vizHint: string }
   | { type: "SET_ERROR"; message: string }
-  | { type: "APPROVAL_REQUIRED"; approval: PendingApproval }
-  | { type: "APPROVAL_RESOLVED" }
   | { type: "RESET" };
 
 const initialState: State = {
@@ -36,7 +26,6 @@ const initialState: State = {
   sessionId: null,
   isStreaming: false,
   error: null,
-  pendingApproval: null,
 };
 
 function updateLastAssistant(
@@ -118,12 +107,6 @@ function reducer(state: State, action: Action): State {
         })),
       };
 
-    case "APPROVAL_REQUIRED":
-      return { ...state, pendingApproval: action.approval };
-
-    case "APPROVAL_RESOLVED":
-      return { ...state, pendingApproval: null };
-
     case "RESET":
       return initialState;
 
@@ -177,16 +160,6 @@ export function useAgentStream() {
             dispatch({ type: "APPEND_TRACE", event });
           } else if (event.type === "llm_chunk") {
             dispatch({ type: "APPEND_DELTA", delta: event.delta });
-          } else if (event.type === "approval_required") {
-            dispatch({
-              type: "APPROVAL_REQUIRED",
-              approval: {
-                tool: event.tool,
-                input: event.input,
-                reason: event.reason,
-                streamKey,
-              },
-            });
           } else if (event.type === "final") {
             dispatch({
               type: "SET_FINAL",
@@ -207,7 +180,6 @@ export function useAgentStream() {
       es.addEventListener("tool_start", handleEvent);
       es.addEventListener("tool_result", handleEvent);
       es.addEventListener("llm_chunk", handleEvent);
-      es.addEventListener("approval_required", handleEvent);
       es.addEventListener("final", handleEvent);
       es.addEventListener("error", handleEvent);
 
@@ -234,24 +206,11 @@ export function useAgentStream() {
     });
   }, []);
 
-  const respondToApproval = useCallback(async (streamKey: string, approved: boolean) => {
-    dispatch({ type: "APPROVAL_RESOLVED" });
-    try {
-      await fetch(`${API_BASE}/approve/${streamKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved }),
-      });
-    } catch {
-      // approval endpoint failure is non-fatal
-    }
-  }, []);
-
   const reset = useCallback(() => {
     esRef.current?.close();
     sessionRef.current = null;
     dispatch({ type: "RESET" });
   }, []);
 
-  return { ...state, send, cancel, reset, respondToApproval };
+  return { ...state, send, cancel, reset };
 }

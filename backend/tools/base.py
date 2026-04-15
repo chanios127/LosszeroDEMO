@@ -16,11 +16,6 @@ class Tool(ABC):
     @abstractmethod
     def description(self) -> str: ...
 
-    @property
-    def requires_approval(self) -> bool:
-        """Override to True for tools that need user approval before execution."""
-        return False
-
     @abstractmethod
     def schema(self) -> ToolSchema: ...
 

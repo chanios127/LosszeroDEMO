@@ -1,19 +1,10 @@
 import { useAgentStream } from "./hooks/useAgentStream";
-import ApprovalPrompt from "./components/ApprovalPrompt";
 import ChatInput from "./components/ChatInput";
 import MessageThread from "./components/MessageThread";
 
 export default function App() {
-  const {
-    messages,
-    isStreaming,
-    error,
-    pendingApproval,
-    send,
-    cancel,
-    reset,
-    respondToApproval,
-  } = useAgentStream();
+  const { messages, isStreaming, error, send, cancel, reset } =
+    useAgentStream();
 
   return (
     <div className="flex h-screen flex-col">
@@ -80,16 +71,6 @@ export default function App() {
 
           {/* Conversation thread */}
           <MessageThread messages={messages} />
-
-          {/* Approval prompt */}
-          {pendingApproval && (
-            <div className="mt-4">
-              <ApprovalPrompt
-                approval={pendingApproval}
-                onRespond={respondToApproval}
-              />
-            </div>
-          )}
 
           {/* Error */}
           {error && (
