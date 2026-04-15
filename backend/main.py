@@ -42,6 +42,8 @@ MAX_HISTORY = int(os.environ.get("MAX_CONVERSATION_HISTORY", "20"))
 # In-memory stores
 _sessions: dict[str, list[AgentEvent]] = {}
 _conversations: dict[str, list[Message]] = {}
+_continue_gates: dict[str, asyncio.Event] = {}
+_continue_results: dict[str, bool] = {}
 
 
 @asynccontextmanager
@@ -145,11 +147,25 @@ async def start_query(body: QueryRequest):
         llm = get_provider()
         tools = [ListTablesTool(), DBQueryTool(), SPCallTool()]
         max_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
+
+        async def _continue_callback() -> bool:
+            gate = asyncio.Event()
+            _continue_gates[stream_key] = gate
+            _continue_results[stream_key] = False
+            try:
+                await asyncio.wait_for(gate.wait(), timeout=120.0)
+            except asyncio.TimeoutError:
+                return False
+            finally:
+                _continue_gates.pop(stream_key, None)
+            return _continue_results.pop(stream_key, False)
+
         loop = AgentLoop(
             llm=llm,
             tools=tools,
             max_turns=max_turns,
             domain_context=domain_ctx,
+            continue_callback=_continue_callback,
         )
 
         # ── 터미널 로그 상태 ──────────────────────────────────────
@@ -242,6 +258,9 @@ async def start_query(body: QueryRequest):
                 final_answer = event.answer
                 break
 
+            elif event.type == EventType.CONTINUE_PROMPT:
+                print(f"\n⏸️  {event.message}", flush=True)
+
             elif event.type == EventType.ERROR:
                 if _buf:
                     print(_buf, end="", flush=True)
@@ -281,6 +300,21 @@ async def stream_events(stream_key: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class ContinueRequest(BaseModel):
+    proceed: bool
+
+
+@app.post("/api/continue/{stream_key}")
+async def continue_agent(stream_key: str, body: ContinueRequest):
+    """User approves or declines continuing past max_turns."""
+    gate = _continue_gates.get(stream_key)
+    if gate is None:
+        raise HTTPException(status_code=404, detail="No pending continue prompt")
+    _continue_results[stream_key] = body.proceed
+    gate.set()
+    return {"continued": body.proceed}
 
 
 @app.delete("/api/session/{session_id}")

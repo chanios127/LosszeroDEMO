@@ -5,11 +5,18 @@ import type { AgentEvent, ChatMessage } from "../types/events";
 // State & Actions
 // ---------------------------------------------------------------------------
 
+export interface PendingContinue {
+  turn: number;
+  message: string;
+  streamKey: string;
+}
+
 interface State {
   messages: ChatMessage[];
   sessionId: string | null;
   isStreaming: boolean;
   error: string | null;
+  pendingContinue: PendingContinue | null;
 }
 
 type Action =
@@ -19,6 +26,8 @@ type Action =
   | { type: "APPEND_DELTA"; delta: string }
   | { type: "SET_FINAL"; answer: string; data: Record<string, unknown>[] | null; vizHint: string }
   | { type: "SET_ERROR"; message: string }
+  | { type: "CONTINUE_PROMPT"; pending: PendingContinue }
+  | { type: "CONTINUE_RESOLVED" }
   | { type: "RESET" };
 
 const initialState: State = {
@@ -26,6 +35,7 @@ const initialState: State = {
   sessionId: null,
   isStreaming: false,
   error: null,
+  pendingContinue: null,
 };
 
 function updateLastAssistant(
@@ -107,6 +117,12 @@ function reducer(state: State, action: Action): State {
         })),
       };
 
+    case "CONTINUE_PROMPT":
+      return { ...state, pendingContinue: action.pending };
+
+    case "CONTINUE_RESOLVED":
+      return { ...state, pendingContinue: null };
+
     case "RESET":
       return initialState;
 
@@ -160,6 +176,15 @@ export function useAgentStream() {
             dispatch({ type: "APPEND_TRACE", event });
           } else if (event.type === "llm_chunk") {
             dispatch({ type: "APPEND_DELTA", delta: event.delta });
+          } else if (event.type === "continue_prompt") {
+            dispatch({
+              type: "CONTINUE_PROMPT",
+              pending: {
+                turn: event.turn,
+                message: event.message,
+                streamKey,
+              },
+            });
           } else if (event.type === "final") {
             dispatch({
               type: "SET_FINAL",
@@ -180,6 +205,7 @@ export function useAgentStream() {
       es.addEventListener("tool_start", handleEvent);
       es.addEventListener("tool_result", handleEvent);
       es.addEventListener("llm_chunk", handleEvent);
+      es.addEventListener("continue_prompt", handleEvent);
       es.addEventListener("final", handleEvent);
       es.addEventListener("error", handleEvent);
 
@@ -206,11 +232,24 @@ export function useAgentStream() {
     });
   }, []);
 
+  const respondToContinue = useCallback(async (streamKey: string, proceed: boolean) => {
+    dispatch({ type: "CONTINUE_RESOLVED" });
+    try {
+      await fetch(`${API_BASE}/continue/${streamKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proceed }),
+      });
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
   const reset = useCallback(() => {
     esRef.current?.close();
     sessionRef.current = null;
     dispatch({ type: "RESET" });
   }, []);
 
-  return { ...state, send, cancel, reset };
+  return { ...state, send, cancel, reset, respondToContinue };
 }

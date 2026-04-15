@@ -13,6 +13,7 @@ class EventType(str, Enum):
     LLM_CHUNK = "llm_chunk"
     FINAL = "final"
     ERROR = "error"
+    CONTINUE_PROMPT = "continue_prompt"
 
 
 VizHint = Literal["bar_chart", "line_chart", "pie_chart", "table", "number"]
@@ -51,4 +52,10 @@ class ErrorEvent(BaseModel):
     message: str
 
 
-AgentEvent = ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent | ErrorEvent
+class ContinuePromptEvent(BaseModel):
+    type: Literal[EventType.CONTINUE_PROMPT] = EventType.CONTINUE_PROMPT
+    turn: int
+    message: str
+
+
+AgentEvent = ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent | ErrorEvent | ContinuePromptEvent

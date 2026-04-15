@@ -35,12 +35,19 @@ export interface ErrorEvent {
   message: string;
 }
 
+export interface ContinuePromptEvent {
+  type: "continue_prompt";
+  turn: number;
+  message: string;
+}
+
 export type AgentEvent =
   | ToolStartEvent
   | ToolResultEvent
   | LLMChunkEvent
   | FinalEvent
-  | ErrorEvent;
+  | ErrorEvent
+  | ContinuePromptEvent;
 
 export interface ChatMessage {
   id: string;

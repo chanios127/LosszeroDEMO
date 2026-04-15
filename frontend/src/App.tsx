@@ -3,8 +3,16 @@ import ChatInput from "./components/ChatInput";
 import MessageThread from "./components/MessageThread";
 
 export default function App() {
-  const { messages, isStreaming, error, send, cancel, reset } =
-    useAgentStream();
+  const {
+    messages,
+    isStreaming,
+    error,
+    pendingContinue,
+    send,
+    cancel,
+    reset,
+    respondToContinue,
+  } = useAgentStream();
 
   return (
     <div className="flex h-screen flex-col">
@@ -71,6 +79,35 @@ export default function App() {
 
           {/* Conversation thread */}
           <MessageThread messages={messages} />
+
+          {/* Continue prompt */}
+          {pendingContinue && (
+            <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-yellow-300">
+                  ⏸️ {pendingContinue.message}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() =>
+                      respondToContinue(pendingContinue.streamKey, true)
+                    }
+                    className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+                  >
+                    계속
+                  </button>
+                  <button
+                    onClick={() =>
+                      respondToContinue(pendingContinue.streamKey, false)
+                    }
+                    className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
+                  >
+                    중단
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error */}
           {error && (

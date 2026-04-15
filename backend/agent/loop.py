@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable, Awaitable
 
 from agent.events import (
     AgentEvent,
+    ContinuePromptEvent,
     ErrorEvent,
     FinalEvent,
     LLMChunkEvent,
@@ -16,6 +17,9 @@ from agent.events import (
 )
 from llm.base import LLMProvider, LLMEvent, LLMEventType, Message, ToolCall
 from tools.base import Tool
+
+# Callback: () → bool (True = continue, False = stop)
+ContinueCallback = Callable[[], Awaitable[bool]]
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +84,13 @@ class AgentLoop:
         tools: list[Tool],
         max_turns: int = 10,
         domain_context: str = "",
+        continue_callback: ContinueCallback | None = None,
     ) -> None:
         self.llm = llm
         self.tools: dict[str, Tool] = {t.name: t for t in tools}
         self.max_turns = max_turns
         self._domain_context = domain_context
+        self._continue_callback = continue_callback
 
     async def run(
         self, user_input: str, history: list[Message] | None = None
@@ -98,8 +104,11 @@ class AgentLoop:
         tool_schemas = [t.schema() for t in self.tools.values()]
         last_data: list[dict] | None = None
         answer_parts: list[str] = []
+        turn = 0
+        turn_limit = self.max_turns
 
-        for turn in range(1, self.max_turns + 1):
+        while turn < turn_limit:
+            turn += 1
             pending_tool_call: ToolCall | None = None
             text_buf: list[str] = []
 
@@ -178,7 +187,23 @@ class AgentLoop:
                 )
                 messages.append(_make_tool_result_msg(tc.id, f"Error: {err_msg}"))
 
-        # max_turns exceeded
-        yield ErrorEvent(
-            message=f"Agent stopped after {self.max_turns} turns without a final answer."
+            # Check turn limit — ask user to continue if at boundary
+            if turn >= turn_limit and pending_tool_call is not None:
+                if self._continue_callback:
+                    yield ContinuePromptEvent(
+                        turn=turn,
+                        message=f"{turn}턴 도달. 계속 진행할까요?",
+                    )
+                    if await self._continue_callback():
+                        turn_limit += self.max_turns
+                        continue
+                # No callback or user declined — fall through to final
+                break
+
+        # Loop ended — return whatever we have
+        viz_hint_final: VizHint = _infer_viz_hint(last_data) if last_data else "table"
+        yield FinalEvent(
+            answer=" ".join(answer_parts) or "(완료)",
+            viz_hint=viz_hint_final,
+            data=last_data,
         )
