@@ -133,6 +133,38 @@ async def list_domains():
     return get_domains_summary()
 
 
+class SqlRequest(BaseModel):
+    sql: str
+
+
+@app.post("/api/sql")
+async def execute_sql(body: SqlRequest):
+    """Direct SQL execution — no LLM, no agent. SELECT only."""
+    import asyncio as _aio
+    from tools.db_query import _assert_read_only
+
+    sql = body.sql.strip()
+    _assert_read_only(sql)
+
+    from db.connection import get_connection
+    async with get_connection() as conn:
+        loop = _aio.get_event_loop()
+
+        def _run():
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            if cursor.description:
+                columns = [col[0] for col in cursor.description]
+                rows = cursor.fetchall()
+                cursor.close()
+                return [dict(zip(columns, row)) for row in rows]
+            cursor.close()
+            return []
+
+        data = await loop.run_in_executor(None, _run)
+        return {"data": data, "rows": len(data)}
+
+
 @app.post("/api/query", response_model=QueryResponse)
 async def start_query(body: QueryRequest):
     session_id = body.session_id or str(uuid.uuid4())

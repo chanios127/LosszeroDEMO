@@ -20,55 +20,26 @@ export default function DataQueryPage() {
     if (!trimmed || loading) return;
 
     setLoading(true);
-
     try {
-      // Direct query via the agent — sends a literal SQL execution request
-      const res = await fetch("/api/query", {
+      const res = await fetch("/api/sql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: `다음 SQL을 실행해줘: ${trimmed}` }),
+        body: JSON.stringify({ sql: trimmed }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
 
-      const { status: streamKey } = await res.json();
-
-      // Collect SSE events
-      const es = new EventSource(`/api/stream/${streamKey}`);
-      let resultData: Record<string, unknown>[] | null = null;
-      let errorMsg: string | null = null;
-
-      await new Promise<void>((resolve) => {
-        es.addEventListener("tool_result", (e) => {
-          try {
-            const evt = JSON.parse(e.data);
-            if (evt.output && Array.isArray(evt.output)) {
-              resultData = evt.output;
-            }
-            if (evt.error) errorMsg = evt.error;
-          } catch { /* skip */ }
-        });
-
-        es.addEventListener("final", () => { es.close(); resolve(); });
-        es.addEventListener("error", (e) => {
-          try {
-            const evt = JSON.parse((e as MessageEvent).data);
-            errorMsg = evt.message;
-          } catch { /* skip */ }
-          es.close();
-          resolve();
-        });
-
-        es.onerror = () => { es.close(); resolve(); };
-      });
+      if (!res.ok) {
+        throw new Error(body.detail || `HTTP ${res.status}`);
+      }
 
       setResults((prev) => [
         {
           id: crypto.randomUUID(),
           sql: trimmed,
-          data: resultData,
-          error: errorMsg,
-          rows: resultData?.length ?? 0,
+          data: body.data,
+          error: null,
+          rows: body.rows,
           executedAt: Date.now(),
         },
         ...prev,
@@ -144,7 +115,6 @@ export default function DataQueryPage() {
 
           {results.map((r) => (
             <div key={r.id} className="rounded-lg border border-slate-800 bg-slate-900/50">
-              {/* Query header */}
               <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
                 <code className="text-xs text-slate-400 truncate max-w-[80%]">
                   {r.sql}
@@ -153,8 +123,6 @@ export default function DataQueryPage() {
                   {r.rows} rows / {new Date(r.executedAt).toLocaleTimeString()}
                 </span>
               </div>
-
-              {/* Result body */}
               <div className="p-4">
                 {r.error ? (
                   <p className="text-sm text-red-400">{r.error}</p>
