@@ -1,162 +1,171 @@
-import { useEffect, useState } from "react";
-import { useAgentStream } from "../hooks/useAgentStream";
-import ChatInput from "../components/ChatInput";
-import MessageThread from "../components/MessageThread";
-import ResultsBoard from "../components/ResultsBoard";
+import { useState } from "react";
+import { DataTable } from "../components/VizPanel";
+
+interface QueryResult {
+  id: string;
+  sql: string;
+  data: Record<string, unknown>[] | null;
+  error: string | null;
+  rows: number;
+  executedAt: number;
+}
 
 export default function DataQueryPage() {
-  const {
-    messages,
-    isStreaming,
-    error,
-    pendingContinue,
-    results,
-    activeResultId,
-    send,
-    cancel,
-    reset,
-    respondToContinue,
-    setActiveResult,
-  } = useAgentStream();
+  const [sql, setSql] = useState("");
+  const [results, setResults] = useState<QueryResult[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const [mobileTab, setMobileTab] = useState<"chat" | "results">("chat");
+  const executeQuery = async () => {
+    const trimmed = sql.trim();
+    if (!trimmed || loading) return;
 
-  // Switch to results tab when new result arrives on mobile
-  useEffect(() => {
-    if (results.length > 0) setMobileTab("results");
-  }, [results.length]);
+    setLoading(true);
 
-  const chatContent = (
-    <>
-      {messages.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="text-4xl">🔍</div>
-          <h2 className="mt-4 text-xl font-semibold text-slate-300">
-            ERP 데이터를 자연어로 조회하세요
-          </h2>
-          <p className="mt-2 max-w-md text-sm text-slate-500">
-            생산 실적, 재고 현황, 작업 지시 등 MSSQL에 저장된 데이터를
-            자연어로 검색하고 시각화합니다.
-          </p>
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {["오늘 공정별 생산량 조회", "현재 재고 현황 알려줘", "작업 지시 목록 보여줘"].map((q) => (
-              <button
-                key={q}
-                onClick={() => send(q)}
-                className="rounded-full border border-slate-700 px-4 py-2 text-sm
-                  text-slate-400 transition hover:border-brand-500 hover:text-brand-500"
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+    try {
+      // Direct query via the agent — sends a literal SQL execution request
+      const res = await fetch("/api/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: `다음 SQL을 실행해줘: ${trimmed}` }),
+      });
 
-      <MessageThread messages={messages} />
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      {pendingContinue && (
-        <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-sm text-yellow-300">⏸️ {pendingContinue.message}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => respondToContinue(pendingContinue.streamKey, true)}
-                className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
-              >
-                계속
-              </button>
-              <button
-                onClick={() => respondToContinue(pendingContinue.streamKey, false)}
-                className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
-              >
-                중단
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      const { status: streamKey } = await res.json();
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-red-800/50 bg-red-900/20 p-4 text-sm text-red-400">
-          {error}
-        </div>
-      )}
-    </>
-  );
+      // Collect SSE events
+      const es = new EventSource(`/api/stream/${streamKey}`);
+      let resultData: Record<string, unknown>[] | null = null;
+      let errorMsg: string | null = null;
 
-  const mobileTabs = (
-    <div className="flex lg:hidden border-b border-slate-800 shrink-0">
-      {(["chat", "results"] as const).map((tab) => (
-        <button
-          key={tab}
-          onClick={() => setMobileTab(tab)}
-          className={`flex-1 py-2 text-sm border-b-2 transition-colors ${
-            mobileTab === tab
-              ? "border-brand-500 text-brand-500"
-              : "border-transparent text-slate-400"
-          }`}
-        >
-          {tab === "chat" ? "채팅" : `결과${results.length > 0 ? ` (${results.length})` : ""}`}
-        </button>
-      ))}
-    </div>
-  );
+      await new Promise<void>((resolve) => {
+        es.addEventListener("tool_result", (e) => {
+          try {
+            const evt = JSON.parse(e.data);
+            if (evt.output && Array.isArray(evt.output)) {
+              resultData = evt.output;
+            }
+            if (evt.error) errorMsg = evt.error;
+          } catch { /* skip */ }
+        });
+
+        es.addEventListener("final", () => { es.close(); resolve(); });
+        es.addEventListener("error", (e) => {
+          try {
+            const evt = JSON.parse((e as MessageEvent).data);
+            errorMsg = evt.message;
+          } catch { /* skip */ }
+          es.close();
+          resolve();
+        });
+
+        es.onerror = () => { es.close(); resolve(); };
+      });
+
+      setResults((prev) => [
+        {
+          id: crypto.randomUUID(),
+          sql: trimmed,
+          data: resultData,
+          error: errorMsg,
+          rows: resultData?.length ?? 0,
+          executedAt: Date.now(),
+        },
+        ...prev,
+      ]);
+    } catch (err) {
+      setResults((prev) => [
+        {
+          id: crypto.randomUUID(),
+          sql: trimmed,
+          data: null,
+          error: err instanceof Error ? err.message : "Unknown error",
+          rows: 0,
+          executedAt: Date.now(),
+        },
+        ...prev,
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      executeQuery();
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 shrink-0">
-        <span className="text-xs text-slate-500">
-          {isStreaming ? "처리 중..." : messages.length > 0 ? `${results.length}개 결과` : "쿼리를 입력하세요"}
-        </span>
-        <div className="flex items-center gap-2">
-          {messages.length > 0 && (
+      {/* SQL input */}
+      <div className="border-b border-slate-800 p-4 shrink-0">
+        <div className="mx-auto max-w-5xl">
+          <label className="mb-2 block text-xs font-medium text-slate-400">
+            SQL Query (Ctrl+Enter to execute)
+          </label>
+          <textarea
+            value={sql}
+            onChange={(e) => setSql(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="SELECT TOP 10 * FROM ..."
+            rows={4}
+            className="w-full resize-none rounded-lg bg-slate-800 px-4 py-3 font-mono text-sm
+              text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          <div className="mt-2 flex items-center justify-between">
+            <p className="text-[10px] text-slate-600">
+              읽기 전용 — SELECT만 허용, DML/DDL 차단
+            </p>
             <button
-              onClick={reset}
-              className="rounded bg-slate-800 px-3 py-1 text-xs text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+              onClick={executeQuery}
+              disabled={loading || !sql.trim()}
+              className="rounded bg-brand-500 px-4 py-1.5 text-sm font-medium text-white
+                hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              새 대화
+              {loading ? "실행 중..." : "실행"}
             </button>
-          )}
-          {isStreaming && (
-            <button
-              onClick={cancel}
-              className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-400 hover:bg-red-500/30"
-            >
-              취소
-            </button>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* Split layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Chat */}
-        <div
-          className={`flex flex-col w-full lg:w-[45%] lg:border-r lg:border-slate-800 overflow-hidden ${
-            mobileTab === "results" ? "hidden lg:flex" : "flex"
-          }`}
-        >
-          {mobileTabs}
-          <div className="flex-1 overflow-auto p-4 lg:p-6">{chatContent}</div>
-          <ChatInput onSend={send} disabled={isStreaming} />
-        </div>
+      {/* Results */}
+      <div className="flex-1 overflow-auto p-4">
+        <div className="mx-auto max-w-5xl space-y-4">
+          {results.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="text-3xl mb-3">📊</div>
+              <p className="text-sm text-slate-500">
+                SQL 쿼리를 입력하고 실행하면 결과가 여기에 표시됩니다.
+              </p>
+            </div>
+          )}
 
-        {/* Right: Results */}
-        <div
-          className={`flex-col flex-1 overflow-hidden ${
-            mobileTab === "chat" ? "hidden lg:flex" : "flex"
-          }`}
-        >
-          {mobileTabs}
-          <div className="flex-1 overflow-hidden">
-            <ResultsBoard
-              results={results}
-              activeResultId={activeResultId}
-              onSelectResult={setActiveResult}
-            />
-          </div>
+          {results.map((r) => (
+            <div key={r.id} className="rounded-lg border border-slate-800 bg-slate-900/50">
+              {/* Query header */}
+              <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+                <code className="text-xs text-slate-400 truncate max-w-[80%]">
+                  {r.sql}
+                </code>
+                <span className="text-[10px] text-slate-600">
+                  {r.rows} rows / {new Date(r.executedAt).toLocaleTimeString()}
+                </span>
+              </div>
+
+              {/* Result body */}
+              <div className="p-4">
+                {r.error ? (
+                  <p className="text-sm text-red-400">{r.error}</p>
+                ) : r.data && r.data.length > 0 ? (
+                  <DataTable data={r.data} />
+                ) : (
+                  <p className="text-sm text-slate-500">결과 없음</p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

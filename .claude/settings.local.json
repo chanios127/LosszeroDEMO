@@ -95,7 +95,22 @@
       "Bash(pnpm add *)",
       "Bash(pnpm exec:*)",
       "Bash(rm -rf node_modules)",
-      "Bash(pnpm install:*)"
+      "Bash(pnpm install:*)",
+      "Bash(git status:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(rm \"C:/ParkwooDevProjects/LosszeroDEMO/.claude/skills/LosszeroDB_GW/gen_domain.py\")",
+      "Bash(rm \"C:/ParkwooDevProjects/LosszeroDEMO/.claude/skills/LosszeroDB_3Z_MES/gen_domain.py\")",
+      "Bash(rm -rf \"C:/ParkwooDevProjects/LosszeroDEMO/.claude/skills/LosszeroDB_GW/__pycache__\")",
+      "Bash(rm -rf \"C:/ParkwooDevProjects/LosszeroDEMO/.claude/skills/LosszeroDB_3Z_MES/__pycache__\")",
+      "Bash(python meta.py table_list --pattern WPM)",
+      "Bash(python Query.py \"SELECT TOP 3 name FROM sys.tables ORDER BY name\" --db 1)",
+      "Bash(python meta.py column_info WPM_DayReport)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('domain:', d.get\\('domain'\\)\\); print\\('tables:', len\\(d.get\\('tables',[]\\)\\)\\); print\\('SPs:', len\\(d.get\\('stored_procedures',[]\\)\\)\\); print\\('keywords:', d.get\\('keywords',[]\\)\\); print\\('table_groups:', list\\(d.get\\('table_groups',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
