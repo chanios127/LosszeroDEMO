@@ -58,3 +58,13 @@ export interface ChatMessage {
   traceEvents?: AgentEvent[];
   isStreaming?: boolean;
 }
+
+export interface ResultEntry {
+  id: string;
+  query: string;
+  timestamp: number;
+  answer: string;
+  data: Record<string, unknown>[] | null;
+  vizHint: VizHint;
+  messageId: string;
+}

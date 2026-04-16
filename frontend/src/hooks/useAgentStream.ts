@@ -1,5 +1,5 @@
 import { useCallback, useReducer, useRef } from "react";
-import type { AgentEvent, ChatMessage } from "../types/events";
+import type { AgentEvent, ChatMessage, ResultEntry } from "../types/events";
 
 // ---------------------------------------------------------------------------
 // State & Actions
@@ -17,6 +17,8 @@ interface State {
   isStreaming: boolean;
   error: string | null;
   pendingContinue: PendingContinue | null;
+  results: ResultEntry[];
+  activeResultId: string | null;
 }
 
 type Action =
@@ -28,6 +30,7 @@ type Action =
   | { type: "SET_ERROR"; message: string }
   | { type: "CONTINUE_PROMPT"; pending: PendingContinue }
   | { type: "CONTINUE_RESOLVED" }
+  | { type: "SET_ACTIVE_RESULT"; id: string | null }
   | { type: "RESET" };
 
 const initialState: State = {
@@ -36,6 +39,8 @@ const initialState: State = {
   isStreaming: false,
   error: null,
   pendingContinue: null,
+  results: [],
+  activeResultId: null,
 };
 
 function updateLastAssistant(
@@ -93,7 +98,18 @@ function reducer(state: State, action: Action): State {
         })),
       };
 
-    case "SET_FINAL":
+    case "SET_FINAL": {
+      const lastUser = [...state.messages].reverse().find((m) => m.role === "user");
+      const lastAssistant = [...state.messages].reverse().find((m) => m.role === "assistant");
+      const newResult: ResultEntry = {
+        id: crypto.randomUUID(),
+        query: lastUser?.content ?? "",
+        timestamp: Date.now(),
+        answer: action.answer,
+        data: action.data,
+        vizHint: action.vizHint as ResultEntry["vizHint"],
+        messageId: lastAssistant?.id ?? "",
+      };
       return {
         ...state,
         isStreaming: false,
@@ -104,7 +120,10 @@ function reducer(state: State, action: Action): State {
           vizHint: action.vizHint as ChatMessage["vizHint"],
           isStreaming: false,
         })),
+        results: [...state.results, newResult],
+        activeResultId: newResult.id,
       };
+    }
 
     case "SET_ERROR":
       return {
@@ -122,6 +141,9 @@ function reducer(state: State, action: Action): State {
 
     case "CONTINUE_RESOLVED":
       return { ...state, pendingContinue: null };
+
+    case "SET_ACTIVE_RESULT":
+      return { ...state, activeResultId: action.id };
 
     case "RESET":
       return initialState;
@@ -251,5 +273,9 @@ export function useAgentStream() {
     dispatch({ type: "RESET" });
   }, []);
 
-  return { ...state, send, cancel, reset, respondToContinue };
+  const setActiveResult = useCallback((id: string | null) => {
+    dispatch({ type: "SET_ACTIVE_RESULT", id });
+  }, []);
+
+  return { ...state, send, cancel, reset, respondToContinue, setActiveResult };
 }

@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useAgentStream } from "./hooks/useAgentStream";
 import ChatInput from "./components/ChatInput";
 import MessageThread from "./components/MessageThread";
+import ResultsBoard from "./components/ResultsBoard";
 
 export default function App() {
   const {
@@ -8,11 +10,114 @@ export default function App() {
     isStreaming,
     error,
     pendingContinue,
+    results,
+    activeResultId,
     send,
     cancel,
     reset,
     respondToContinue,
+    setActiveResult,
   } = useAgentStream();
+
+  const [layoutMode, setLayoutMode] = useState<"chat" | "dashboard">("chat");
+  const [mobileTab, setMobileTab] = useState<"chat" | "results">("chat");
+
+  // Auto-switch to dashboard on first result
+  useEffect(() => {
+    if (results.length === 1) setLayoutMode("dashboard");
+  }, [results.length]);
+
+  // Reset mobile tab to chat when switching to chat mode
+  useEffect(() => {
+    if (layoutMode === "chat") setMobileTab("chat");
+  }, [layoutMode]);
+
+  const chatContent = (
+    <>
+      {messages.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="text-4xl">🔍</div>
+          <h2 className="mt-4 text-xl font-semibold text-slate-300">
+            ERP 데이터를 자연어로 조회하세요
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-slate-500">
+            생산 실적, 재고 현황, 작업 지시 등 MSSQL에 저장된 데이터를
+            자연어로 검색하고 시각화합니다.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            {[
+              "오늘 공정별 생산량 조회",
+              "현재 재고 현황 알려줘",
+              "작업 지시 목록 보여줘",
+            ].map((q) => (
+              <button
+                key={q}
+                onClick={() => send(q)}
+                className="rounded-full border border-slate-700 px-4 py-2 text-sm
+                  text-slate-400 transition hover:border-brand-500 hover:text-brand-500"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <MessageThread messages={messages} />
+
+      {pendingContinue && (
+        <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-yellow-300">
+              ⏸️ {pendingContinue.message}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() =>
+                  respondToContinue(pendingContinue.streamKey, true)
+                }
+                className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+              >
+                계속
+              </button>
+              <button
+                onClick={() =>
+                  respondToContinue(pendingContinue.streamKey, false)
+                }
+                className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
+              >
+                중단
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-800/50 bg-red-900/20 p-4 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+    </>
+  );
+
+  const mobileTabs = (
+    <div className="flex lg:hidden border-b border-slate-800">
+      {(["chat", "results"] as const).map((tab) => (
+        <button
+          key={tab}
+          onClick={() => setMobileTab(tab)}
+          className={`flex-1 py-2 text-sm border-b-2 transition-colors ${
+            mobileTab === tab
+              ? "border-brand-500 text-brand-500"
+              : "border-transparent text-slate-400"
+          }`}
+        >
+          {tab === "chat" ? "채팅" : "결과"}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex h-screen flex-col">
@@ -24,6 +129,24 @@ export default function App() {
             PoC
           </span>
         </div>
+
+        {/* Layout mode toggle — desktop only */}
+        <div className="hidden lg:flex items-center rounded bg-slate-800 p-0.5">
+          {(["chat", "dashboard"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setLayoutMode(mode)}
+              className={`rounded px-3 py-1 text-xs transition-colors ${
+                layoutMode === mode
+                  ? "bg-slate-700 text-slate-100"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {mode === "chat" ? "채팅" : "대시보드"}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2">
           {messages.length > 0 && (
             <button
@@ -44,82 +167,45 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-auto p-6">
-        <div className="mx-auto max-w-4xl">
-          {/* Welcome message */}
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="text-4xl">🔍</div>
-              <h2 className="mt-4 text-xl font-semibold text-slate-300">
-                ERP 데이터를 자연어로 조회하세요
-              </h2>
-              <p className="mt-2 max-w-md text-sm text-slate-500">
-                생산 실적, 재고 현황, 작업 지시 등 MSSQL에 저장된 데이터를
-                자연어로 검색하고 시각화합니다.
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2">
-                {[
-                  "오늘 공정별 생산량 조회",
-                  "현재 재고 현황 알려줘",
-                  "작업 지시 목록 보여줘",
-                ].map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => send(q)}
-                    className="rounded-full border border-slate-700 px-4 py-2 text-sm
-                      text-slate-400 transition hover:border-brand-500 hover:text-brand-500"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
+      {layoutMode === "chat" ? (
+        <>
+          <main className="flex-1 overflow-auto p-6">
+            <div className="mx-auto max-w-4xl">{chatContent}</div>
+          </main>
+          <ChatInput onSend={send} disabled={isStreaming} />
+        </>
+      ) : (
+        <main className="flex-1 overflow-hidden flex flex-row">
+          {/* Left: Chat panel */}
+          <div
+            className={`flex flex-col w-full lg:w-[45%] lg:border-r lg:border-slate-800 overflow-hidden ${
+              mobileTab === "results" ? "hidden lg:flex" : "flex"
+            }`}
+          >
+            {mobileTabs}
+            <div className="flex-1 overflow-auto p-4 lg:p-6">
+              {chatContent}
             </div>
-          )}
+            <ChatInput onSend={send} disabled={isStreaming} />
+          </div>
 
-          {/* Conversation thread */}
-          <MessageThread messages={messages} />
-
-          {/* Continue prompt */}
-          {pendingContinue && (
-            <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-yellow-300">
-                  ⏸️ {pendingContinue.message}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() =>
-                      respondToContinue(pendingContinue.streamKey, true)
-                    }
-                    className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
-                  >
-                    계속
-                  </button>
-                  <button
-                    onClick={() =>
-                      respondToContinue(pendingContinue.streamKey, false)
-                    }
-                    className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
-                  >
-                    중단
-                  </button>
-                </div>
-              </div>
+          {/* Right: Results panel */}
+          <div
+            className={`flex-col flex-1 overflow-hidden ${
+              mobileTab === "chat" ? "hidden lg:flex" : "flex"
+            }`}
+          >
+            {mobileTabs}
+            <div className="flex-1 overflow-hidden">
+              <ResultsBoard
+                results={results}
+                activeResultId={activeResultId}
+                onSelectResult={setActiveResult}
+              />
             </div>
-          )}
-
-          {/* Error */}
-          {error && (
-            <div className="mt-4 rounded-lg border border-red-800/50 bg-red-900/20 p-4 text-sm text-red-400">
-              {error}
-            </div>
-          )}
-        </div>
-      </main>
-
-      {/* Input */}
-      <ChatInput onSend={send} disabled={isStreaming} />
+          </div>
+        </main>
+      )}
     </div>
   );
 }

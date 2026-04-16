@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -13,6 +13,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Brush,
 } from "recharts";
 import type { FinalEvent, VizHint } from "../types/events";
 
@@ -26,6 +27,14 @@ const COLORS = [
   "#fb923c",
   "#818cf8",
 ];
+
+export const VIZ_ICON_MAP: Record<VizHint, string> = {
+  bar_chart: "▊",
+  line_chart: "∿",
+  pie_chart: "◕",
+  table: "⊞",
+  number: "#",
+};
 
 // ---------------------------------------------------------------------------
 // DataTable
@@ -106,10 +115,25 @@ function detectColumns(data: Record<string, unknown>[]) {
   return { label, numerics };
 }
 
+function getApplicableHints(data: Record<string, unknown>[]): VizHint[] {
+  if (!data.length) return ["table"];
+  const { numerics } = detectColumns(data);
+  const hasNumerics = numerics.length > 0;
+  const nonNumericCount = Object.keys(data[0]).length - numerics.length;
+  const hints: VizHint[] = [];
+  if (hasNumerics) hints.push("bar_chart", "line_chart");
+  if (hasNumerics && numerics.length === 1 && nonNumericCount >= 1)
+    hints.push("pie_chart");
+  hints.push("table");
+  if (data.length === 1 && hasNumerics) hints.push("number");
+  return hints;
+}
+
 function ChartBarViz({ data }: { data: Record<string, unknown>[] }) {
   const { label, numerics } = useMemo(() => detectColumns(data), [data]);
+  const [focusBar, setFocusBar] = useState<number | null>(null);
   return (
-    <ResponsiveContainer width="100%" height={360}>
+    <ResponsiveContainer width="100%" height={400}>
       <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
         <XAxis dataKey={label} tick={{ fill: "#94a3b8", fontSize: 12 }} />
@@ -123,8 +147,31 @@ function ChartBarViz({ data }: { data: Record<string, unknown>[] }) {
         />
         <Legend />
         {numerics.map((key, i) => (
-          <Bar key={key} dataKey={key} fill={COLORS[i % COLORS.length]} />
+          <Bar
+            key={key}
+            dataKey={key}
+            fill={COLORS[i % COLORS.length]}
+            onClick={(_d: unknown, idx: number) =>
+              setFocusBar(idx === focusBar ? null : idx)
+            }
+            style={{ cursor: "pointer" }}
+          >
+            {data.map((_, rowIdx) => (
+              <Cell
+                key={rowIdx}
+                fill={COLORS[i % COLORS.length]}
+                opacity={focusBar === null || focusBar === rowIdx ? 1 : 0.35}
+              />
+            ))}
+          </Bar>
         ))}
+        <Brush
+          dataKey={label}
+          height={20}
+          stroke="#334155"
+          fill="#1e293b"
+          travellerWidth={8}
+        />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -133,7 +180,7 @@ function ChartBarViz({ data }: { data: Record<string, unknown>[] }) {
 function ChartLineViz({ data }: { data: Record<string, unknown>[] }) {
   const { label, numerics } = useMemo(() => detectColumns(data), [data]);
   return (
-    <ResponsiveContainer width="100%" height={360}>
+    <ResponsiveContainer width="100%" height={400}>
       <LineChart
         data={data}
         margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
@@ -159,6 +206,13 @@ function ChartLineViz({ data }: { data: Record<string, unknown>[] }) {
             dot={{ r: 4 }}
           />
         ))}
+        <Brush
+          dataKey={label}
+          height={20}
+          stroke="#334155"
+          fill="#1e293b"
+          travellerWidth={8}
+        />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -166,6 +220,7 @@ function ChartLineViz({ data }: { data: Record<string, unknown>[] }) {
 
 function ChartPieViz({ data }: { data: Record<string, unknown>[] }) {
   const { label, numerics } = useMemo(() => detectColumns(data), [data]);
+  const [activePieIndex, setActivePieIndex] = useState<number | null>(null);
   const valueKey = numerics[0];
   if (!valueKey) return <DataTable data={data} />;
   return (
@@ -181,9 +236,19 @@ function ChartPieViz({ data }: { data: Record<string, unknown>[] }) {
           label={({ name, percent }) =>
             `${name} ${(percent * 100).toFixed(0)}%`
           }
+          onClick={(_d: unknown, idx: number) =>
+            setActivePieIndex(idx === activePieIndex ? null : idx)
+          }
+          style={{ cursor: "pointer" }}
         >
           {data.map((_, i) => (
-            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+            <Cell
+              key={i}
+              fill={COLORS[i % COLORS.length]}
+              opacity={
+                activePieIndex === null || activePieIndex === i ? 1 : 0.35
+              }
+            />
           ))}
         </Pie>
         <Tooltip
@@ -216,6 +281,53 @@ export const VIZ_MAP: Record<
 
 export { DataTable, NumberCard, ChartBarViz, ChartLineViz, ChartPieViz };
 
+/** Visualization with chart type switcher. */
+export function SwitchableViz({
+  data,
+  initialHint,
+}: {
+  data: Record<string, unknown>[];
+  initialHint: VizHint;
+}) {
+  const [activeHint, setActiveHint] = useState<VizHint>(initialHint);
+  const applicable = useMemo(() => getApplicableHints(data), [data]);
+  const Viz = VIZ_MAP[activeHint] ?? DataTable;
+
+  return (
+    <div>
+      {applicable.length > 1 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          {applicable.map((hint) => (
+            <button
+              key={hint}
+              onClick={() => setActiveHint(hint)}
+              className={`flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors ${
+                activeHint === hint
+                  ? "border-brand-500 bg-brand-500/20 text-brand-500"
+                  : "border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span>{VIZ_ICON_MAP[hint]}</span>
+              <span>
+                {hint === "bar_chart"
+                  ? "Bar"
+                  : hint === "line_chart"
+                    ? "Line"
+                    : hint === "pie_chart"
+                      ? "Pie"
+                      : hint === "table"
+                        ? "Table"
+                        : "#"}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <Viz data={data} />
+    </div>
+  );
+}
+
 /** Inline visualization for embedding in chat message bubbles. */
 export function InlineViz({
   data,
@@ -225,10 +337,9 @@ export function InlineViz({
   vizHint: VizHint;
 }) {
   if (!data.length) return null;
-  const Viz = VIZ_MAP[vizHint] ?? DataTable;
   return (
     <div className="mt-3">
-      <Viz data={data} />
+      <SwitchableViz data={data} initialHint={vizHint} />
     </div>
   );
 }
@@ -243,8 +354,6 @@ interface VizPanelProps {
 export default function VizPanel({ finalEvent }: VizPanelProps) {
   if (!finalEvent?.data?.length) return null;
 
-  const Viz = VIZ_MAP[finalEvent.viz_hint] ?? DataTable;
-
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
       <div className="mb-3 flex items-center gap-2">
@@ -255,9 +364,8 @@ export default function VizPanel({ finalEvent }: VizPanelProps) {
           {finalEvent.viz_hint} / {finalEvent.data.length} rows
         </span>
       </div>
-      <Viz data={finalEvent.data} />
+      <SwitchableViz data={finalEvent.data} initialHint={finalEvent.viz_hint} />
 
-      {/* Always show raw table below chart */}
       {finalEvent.viz_hint !== "table" && finalEvent.viz_hint !== "number" && (
         <details className="mt-4">
           <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-300">
