@@ -175,17 +175,42 @@ function AssistantBubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+function getScrollParent(el: HTMLElement | null): HTMLElement | null {
+  while (el && el !== document.body) {
+    const { overflow, overflowY } = window.getComputedStyle(el);
+    if (/auto|scroll/.test(overflow + overflowY)) return el;
+    el = el.parentElement;
+  }
+  return document.documentElement as HTMLElement;
+}
+
 export default function MessageThread({ messages }: MessageThreadProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUp = useRef(false);
+
+  // 실제 스크롤 컨테이너(main)에서 스크롤 감지
+  useEffect(() => {
+    const el = getScrollParent(containerRef.current);
+    if (!el) return;
+    const onScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      userScrolledUp.current = distFromBottom > 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   if (!messages.length) return null;
 
   return (
-    <div className="space-y-4">
+    <div ref={containerRef} className="space-y-4">
       {messages.map((msg) =>
         msg.role === "user" ? (
           <UserBubble key={msg.id} msg={msg} />
