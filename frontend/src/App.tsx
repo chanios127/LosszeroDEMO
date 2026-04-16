@@ -9,11 +9,16 @@ export default function App() {
 
   return (
     <AppShell currentPage={currentPage} onNavigate={setCurrentPage}>
-      {currentPage === "dashboard" && (
+      {/* Keep all pages mounted, toggle visibility with CSS */}
+      <div className={currentPage === "dashboard" ? "h-full" : "hidden"}>
         <DashboardPage onNavigate={setCurrentPage} />
-      )}
-      {currentPage === "data-query" && <DataQueryPage />}
-      {currentPage === "agent-chat" && <AgentChatPage />}
+      </div>
+      <div className={currentPage === "data-query" ? "h-full" : "hidden"}>
+        <DataQueryPage />
+      </div>
+      <div className={currentPage === "agent-chat" ? "h-full" : "hidden"}>
+        <AgentChatPage />
+      </div>
     </AppShell>
   );
 }
