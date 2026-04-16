@@ -1,138 +1,89 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import ChatInput from "../components/ChatInput";
 import MessageThread from "../components/MessageThread";
 import ResultsBoard from "../components/ResultsBoard";
 
 // ---------------------------------------------------------------------------
-// Agent definitions
+// Domain types (from GET /api/domains)
 // ---------------------------------------------------------------------------
-interface AgentDef {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  icon: string;
-  color: string;
-  status: "active" | "soon";
-  quickPrompts: string[];
+interface DomainInfo {
+  domain: string;
+  display_name: string;
+  db: string;
+  table_count: number;
+  sp_count: number;
+  table_groups: string[];
+  keywords: string[];
 }
 
-const AGENTS: AgentDef[] = [
-  {
-    id: "production",
-    name: "생산 분석 에이전트",
-    description: "공정별 생산 실적, 불량률, 작업 지시 현황을 분석합니다.",
-    tags: ["생산 실적", "불량 분석", "공정 모니터링"],
-    icon: "⚙️",
-    color: "from-brand-500/20 to-cyan-500/10",
-    status: "active",
-    quickPrompts: [
-      "오늘 공정별 생산량 알려줘",
-      "이번 주 불량률 추이 보여줘",
-      "현재 진행 중인 작업 지시 목록",
-    ],
-  },
-  {
-    id: "inventory",
-    name: "재고 관리 에이전트",
-    description: "자재 재고 현황, 입출고 이력, 재고 회전율을 분석합니다.",
-    tags: ["재고 현황", "입출고", "안전재고"],
-    icon: "📦",
-    color: "from-emerald-500/20 to-teal-500/10",
-    status: "active",
-    quickPrompts: [
-      "현재 재고 부족 자재 알려줘",
-      "오늘 입고 예정 자재 목록",
-      "재고 회전율 낮은 품목 상위 10개",
-    ],
-  },
-  {
-    id: "quality",
-    name: "품질 관리 에이전트",
-    description: "검사 결과, 품질 지표, 불량 원인을 분석하고 개선 방향을 제시합니다.",
-    tags: ["검사 결과", "품질 지표", "불량 원인"],
-    icon: "✅",
-    color: "from-violet-500/20 to-purple-500/10",
-    status: "soon",
-    quickPrompts: [],
-  },
-  {
-    id: "equipment",
-    name: "설비 관리 에이전트",
-    description: "설비 가동률, 고장 이력, 예방 정비 일정을 관리합니다.",
-    tags: ["가동률", "고장 이력", "예방 정비"],
-    icon: "🔧",
-    color: "from-amber-500/20 to-orange-500/10",
-    status: "soon",
-    quickPrompts: [],
-  },
-];
+// Map domain to visual presentation
+const DOMAIN_STYLE: Record<string, { icon: string; color: string }> = {
+  groupware:  { icon: "📋", color: "from-brand-500/20 to-cyan-500/10" },
+  production: { icon: "⚙️", color: "from-emerald-500/20 to-teal-500/10" },
+  inventory:  { icon: "📦", color: "from-violet-500/20 to-purple-500/10" },
+  quality:    { icon: "✅", color: "from-amber-500/20 to-orange-500/10" },
+};
+
+const DEFAULT_STYLE = { icon: "🔍", color: "from-slate-500/20 to-slate-500/10" };
 
 // ---------------------------------------------------------------------------
-// AgentCard
+// DomainCard
 // ---------------------------------------------------------------------------
-function AgentCard({
-  agent,
+function DomainCard({
+  domain,
   onSelect,
 }: {
-  agent: AgentDef;
-  onSelect: (agent: AgentDef) => void;
+  domain: DomainInfo;
+  onSelect: (domain: DomainInfo) => void;
 }) {
+  const style = DOMAIN_STYLE[domain.domain] ?? DEFAULT_STYLE;
+
   return (
     <div
       className={`relative flex flex-col rounded-xl border border-slate-800
-        bg-gradient-to-br ${agent.color} p-5 transition-all
-        ${agent.status === "active"
-          ? "hover:border-slate-700 cursor-pointer group"
-          : "opacity-55 cursor-default"
-        }`}
-      onClick={agent.status === "active" ? () => onSelect(agent) : undefined}
+        bg-gradient-to-br ${style.color} p-5 transition-all
+        hover:border-slate-700 cursor-pointer group`}
+      onClick={() => onSelect(domain)}
     >
-      {agent.status === "soon" && (
-        <span className="absolute right-3 top-3 rounded bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-400">
-          준비 중
-        </span>
-      )}
-
-      <div className="mb-3 text-3xl">{agent.icon}</div>
-      <h3 className="mb-1.5 font-semibold text-slate-100">{agent.name}</h3>
+      <div className="mb-3 text-3xl">{style.icon}</div>
+      <h3 className="mb-1.5 font-semibold text-slate-100">
+        {domain.display_name} 에이전트
+      </h3>
       <p className="mb-4 flex-1 text-sm text-slate-400 leading-relaxed">
-        {agent.description}
+        {domain.table_count}개 테이블, {domain.sp_count}개 SP
+        {domain.db && ` (${domain.db})`}
       </p>
 
       <div className="mb-4 flex flex-wrap gap-1.5">
-        {agent.tags.map((tag) => (
+        {domain.table_groups.map((group) => (
           <span
-            key={tag}
+            key={group}
             className="rounded bg-slate-800/80 px-2 py-0.5 text-[10px] text-slate-500"
           >
-            {tag}
+            {group}
           </span>
         ))}
       </div>
 
-      {agent.status === "active" && (
-        <button
-          onClick={() => onSelect(agent)}
-          className="w-full rounded-lg bg-slate-800 py-2 text-sm font-medium
-            text-slate-300 transition group-hover:bg-slate-700 group-hover:text-slate-100"
-        >
-          대화 시작 →
-        </button>
-      )}
+      <button
+        className="w-full rounded-lg bg-slate-800 py-2 text-sm font-medium
+          text-slate-300 transition group-hover:bg-slate-700 group-hover:text-slate-100"
+      >
+        대화 시작 →
+      </button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// AgentChat — chat interface for a selected agent
+// AgentChat — chat interface for a selected domain
 // ---------------------------------------------------------------------------
 function AgentChat({
-  agent,
+  domain,
   onBack,
 }: {
-  agent: AgentDef;
+  domain: DomainInfo;
   onBack: () => void;
 }) {
   const {
@@ -150,18 +101,27 @@ function AgentChat({
   } = useAgentStream();
 
   const [mobileTab, setMobileTab] = useState<"chat" | "results">("chat");
+  const style = DOMAIN_STYLE[domain.domain] ?? DEFAULT_STYLE;
+
+  // Build quick prompts from keywords
+  const quickPrompts = domain.keywords
+    .slice(0, 3)
+    .map((kw) => `${kw} 현황 조회`);
 
   const chatContent = (
     <>
       {messages.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="text-4xl mb-3">{agent.icon}</div>
-          <h2 className="text-lg font-semibold text-slate-300">{agent.name}</h2>
+          <div className="text-4xl mb-3">{style.icon}</div>
+          <h2 className="text-lg font-semibold text-slate-300">
+            {domain.display_name} 에이전트
+          </h2>
           <p className="mt-1 mb-6 max-w-sm text-sm text-slate-500">
-            {agent.description}
+            {domain.table_count}개 테이블에서 {domain.display_name} 관련 데이터를
+            조회하고 분석합니다.
           </p>
           <div className="flex flex-col gap-2 w-full max-w-sm">
-            {agent.quickPrompts.map((q) => (
+            {quickPrompts.map((q) => (
               <button
                 key={q}
                 onClick={() => send(q)}
@@ -180,16 +140,22 @@ function AgentChat({
       {pendingContinue && (
         <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-sm text-yellow-300">⏸️ {pendingContinue.message}</p>
+            <p className="text-sm text-yellow-300">
+              ⏸️ {pendingContinue.message}
+            </p>
             <div className="flex gap-2">
               <button
-                onClick={() => respondToContinue(pendingContinue.streamKey, true)}
+                onClick={() =>
+                  respondToContinue(pendingContinue.streamKey, true)
+                }
                 className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
               >
                 계속
               </button>
               <button
-                onClick={() => respondToContinue(pendingContinue.streamKey, false)}
+                onClick={() =>
+                  respondToContinue(pendingContinue.streamKey, false)
+                }
                 className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
               >
                 중단
@@ -219,7 +185,9 @@ function AgentChat({
               : "border-transparent text-slate-400"
           }`}
         >
-          {tab === "chat" ? "채팅" : `결과${results.length > 0 ? ` (${results.length})` : ""}`}
+          {tab === "chat"
+            ? "채팅"
+            : `결과${results.length > 0 ? ` (${results.length})` : ""}`}
         </button>
       ))}
     </div>
@@ -237,8 +205,10 @@ function AgentChat({
           ← 목록
         </button>
         <div className="h-4 w-px bg-slate-800" />
-        <span className="text-sm">{agent.icon}</span>
-        <span className="text-sm font-medium text-slate-200">{agent.name}</span>
+        <span className="text-sm">{style.icon}</span>
+        <span className="text-sm font-medium text-slate-200">
+          {domain.display_name} 에이전트
+        </span>
         <div className="ml-auto flex items-center gap-2">
           {messages.length > 0 && (
             <button
@@ -262,7 +232,6 @@ function AgentChat({
 
       {/* Split layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Chat */}
         <div
           className={`flex flex-col w-full lg:w-[45%] lg:border-r lg:border-slate-800 overflow-hidden ${
             mobileTab === "results" ? "hidden lg:flex" : "flex"
@@ -273,7 +242,6 @@ function AgentChat({
           <ChatInput onSend={send} disabled={isStreaming} />
         </div>
 
-        {/* Right: Results */}
         <div
           className={`flex-col flex-1 overflow-hidden ${
             mobileTab === "chat" ? "hidden lg:flex" : "flex"
@@ -294,16 +262,28 @@ function AgentChat({
 }
 
 // ---------------------------------------------------------------------------
-// AgentChatPage
+// AgentChatPage — domain selection + chat
 // ---------------------------------------------------------------------------
 export default function AgentChatPage() {
-  const [selectedAgent, setSelectedAgent] = useState<AgentDef | null>(null);
+  const [domains, setDomains] = useState<DomainInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDomain, setSelectedDomain] = useState<DomainInfo | null>(null);
 
-  if (selectedAgent) {
+  useEffect(() => {
+    fetch("/api/domains")
+      .then((r) => r.json())
+      .then((data) => {
+        setDomains(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (selectedDomain) {
     return (
       <AgentChat
-        agent={selectedAgent}
-        onBack={() => setSelectedAgent(null)}
+        domain={selectedDomain}
+        onBack={() => setSelectedDomain(null)}
       />
     );
   }
@@ -314,15 +294,30 @@ export default function AgentChatPage() {
         <div className="mb-8">
           <h1 className="text-xl font-bold text-slate-100">에이전트 선택</h1>
           <p className="mt-1 text-sm text-slate-500">
-            분석 목적에 맞는 전문 에이전트를 선택하여 대화를 시작하세요.
+            등록된 도메인의 전문 에이전트를 선택하여 대화를 시작하세요.
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {AGENTS.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} onSelect={setSelectedAgent} />
-          ))}
-        </div>
+        {loading ? (
+          <div className="text-sm text-slate-500">도메인 로드 중...</div>
+        ) : domains.length === 0 ? (
+          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-8 text-center">
+            <p className="text-sm text-slate-500">
+              등록된 도메인이 없습니다. backend/schema_registry/domains/ 에 도메인
+              JSON을 추가하세요.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {domains.map((d) => (
+              <DomainCard
+                key={d.domain}
+                domain={d}
+                onSelect={setSelectedDomain}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ load_dotenv()
 from agent.events import AgentEvent, EventType
 from agent.loop import AgentLoop
 from db.connection import init_pool, close_pool
-from domains.loader import load_registry, load_sp_whitelist, match_domains, get_domain_context
+from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
 from llm import get_provider
 from llm.base import Message
 from tools.db_query import DBQueryTool
@@ -76,10 +76,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"  MSSQL    : ✘  {e}")
 
-    registry = load_registry()
-    sp_wl = load_sp_whitelist()
-    sp_count = sum(len(v.get("procedures", {})) for v in sp_wl.values())
-    print(f"  Domains  : {len(registry)} loaded, {sp_count} SPs whitelisted")
+    domains = load_all_domains()
+    summary = get_domains_summary()
+    total_tables = sum(s["table_count"] for s in summary)
+    total_sps = sum(s["sp_count"] for s in summary)
+    names = ", ".join(s["display_name"] for s in summary) or "none"
+    print(f"  Domains  : {len(domains)} loaded ({names}), {total_tables} tables, {total_sps} SPs")
     print("─" * 50, flush=True)
 
     yield
@@ -117,12 +119,18 @@ class QueryResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    registry = load_registry()
+    summary = get_domains_summary()
     return {
         "status": "ok",
         "provider": os.environ.get("LLM_PROVIDER", "claude"),
-        "domains": list(registry.keys()),
+        "domains": [s["domain"] for s in summary],
     }
+
+
+@app.get("/api/domains")
+async def list_domains():
+    """Return registered domains for frontend dynamic rendering."""
+    return get_domains_summary()
 
 
 @app.post("/api/query", response_model=QueryResponse)
@@ -138,10 +146,10 @@ async def start_query(body: QueryRequest):
     history = _conversations[session_id][-MAX_HISTORY:]
 
     # Domain matching → schema context injection
-    matched_codes = match_domains(body.query)
-    domain_ctx = get_domain_context(matched_codes if matched_codes else None)
-    if matched_codes:
-        logger.info("Domain matched: %s for query: %s", matched_codes, body.query[:50])
+    matched = match_domain(body.query)
+    domain_ctx = domain_to_context(matched) if matched else ""
+    if matched:
+        logger.info("Domain matched: %s for query: %s", matched.get("domain"), body.query[:50])
 
     async def _run():
         llm = get_provider()

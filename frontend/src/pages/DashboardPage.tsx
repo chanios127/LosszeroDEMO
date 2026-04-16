@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Page } from "../components/AppShell";
 
 interface Module {
@@ -76,18 +77,35 @@ const MODULES: Module[] = [
   },
 ];
 
-const STATS = [
-  { label: "연결된 DB", value: "1", sub: "MSSQL" },
-  { label: "등록 도메인", value: "—", sub: "준비 중" },
-  { label: "오늘 처리된 쿼리", value: "—", sub: "세션 기준" },
-  { label: "평균 응답", value: "—", sub: "ms" },
-];
-
 interface DashboardPageProps {
   onNavigate: (page: Page) => void;
 }
 
 export default function DashboardPage({ onNavigate }: DashboardPageProps) {
+  const [domainCount, setDomainCount] = useState<number | null>(null);
+  const [tableCount, setTableCount] = useState<number>(0);
+
+  useEffect(() => {
+    fetch("/api/domains")
+      .then((r) => r.json())
+      .then((data: { table_count: number }[]) => {
+        setDomainCount(data.length);
+        setTableCount(data.reduce((s, d) => s + d.table_count, 0));
+      })
+      .catch(() => {});
+  }, []);
+
+  const STATS = [
+    { label: "연결된 DB", value: "1", sub: "MSSQL" },
+    {
+      label: "등록 도메인",
+      value: domainCount !== null ? String(domainCount) : "—",
+      sub: tableCount > 0 ? `${tableCount} tables` : "로딩 중",
+    },
+    { label: "오늘 처리된 쿼리", value: "—", sub: "세션 기준" },
+    { label: "평균 응답", value: "—", sub: "ms" },
+  ];
+
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-5xl px-6 py-10">

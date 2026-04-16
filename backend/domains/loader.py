@@ -1,4 +1,4 @@
-"""Domain registry v2 — domain_tables.json + sp_whitelist.json loader."""
+"""Domain registry v3 — loads schema_registry/domains/*.json files."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Module -> Domain code mapping
+# Module → Domain code mapping (fallback for keyword matching)
 # ---------------------------------------------------------------------------
 
 MODULE_DOMAIN_MAP: dict[str, dict[str, str]] = {
@@ -38,6 +38,22 @@ MODULE_DOMAIN_MAP: dict[str, dict[str, str]] = {
     "DXP": {"ko": "시스템",         "en": "System"},
 }
 
+# ---------------------------------------------------------------------------
+# Domain spec type (matches JSON structure from schema_registry)
+# ---------------------------------------------------------------------------
+# JSON structure (groupware.json 기준):
+# {
+#   "domain": "groupware",
+#   "display_name": "그룹웨어",
+#   "db": "GW",
+#   "keywords": ["출근", "퇴근", ...],
+#   "table_groups": {"attendance": "근태 — 출퇴근 기록"},
+#   "stored_procedures": [{name, description, params: [{name, type, pk, description}]}],
+#   "tables": [{name, table_group, description, columns: [{name, type, pk, description}], joins}]
+# }
+
+DomainSpec = dict[str, Any]
+
 TABLE_PREFIX = "W"
 
 
@@ -46,78 +62,183 @@ def to_full_table_name(domain_cd: str, business_name: str) -> str:
 
 
 def parse_table_name(full_name: str) -> tuple[str, str] | None:
-    if not full_name.startswith(TABLE_PREFIX):
+    """Extract (domain_cd, business_name) from full table name.
+    e.g. 'WPM_WorkPrdMST' → ('PM', 'WorkPrdMST')
+    Also handles TGW_ prefix: 'TGW_AttendList' → ('GW', 'AttendList')
+    """
+    for prefix in ("W", "T"):
+        if full_name.startswith(prefix):
+            rest = full_name[len(prefix):]
+            parts = rest.split("_", 1)
+            if len(parts) == 2:
+                return parts[0], parts[1]
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Cache
+# ---------------------------------------------------------------------------
+
+_domains: list[DomainSpec] = []
+
+
+def _registry_dir() -> Path:
+    """Default: backend/schema_registry/domains/"""
+    return Path(__file__).resolve().parent.parent / "schema_registry" / "domains"
+
+
+def load_all_domains(base_dir: str | Path | None = None) -> list[DomainSpec]:
+    """Load all *.json domain files from schema_registry/domains/."""
+    global _domains
+    if _domains:
+        return _domains
+
+    d = Path(base_dir) if base_dir else _registry_dir()
+    if not d.exists():
+        logger.warning("Schema registry not found: %s", d)
+        return []
+
+    for f in sorted(d.glob("*.json")):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                spec = json.load(fh)
+            _domains.append(spec)
+            logger.info(
+                "Domain loaded: %s (%s) - %d tables, %d SPs from %s",
+                spec.get("domain"),
+                spec.get("display_name"),
+                len(spec.get("tables", [])),
+                len(spec.get("stored_procedures", [])),
+                f.name,
+            )
+        except Exception as exc:
+            logger.error("Failed to load %s: %s", f, exc)
+
+    return _domains
+
+
+def reload_all(base_dir: str | Path | None = None) -> list[DomainSpec]:
+    global _domains
+    _domains = []
+    return load_all_domains(base_dir)
+
+
+# ---------------------------------------------------------------------------
+# Domain matching
+# ---------------------------------------------------------------------------
+
+def match_domain(question: str) -> DomainSpec | None:
+    """Find best matching domain for a question via keyword scoring."""
+    domains = load_all_domains()
+    if not domains:
         return None
-    rest = full_name[len(TABLE_PREFIX):]
-    parts = rest.split("_", 1)
-    if len(parts) != 2:
-        return None
-    return parts[0], parts[1]
+
+    q = question.lower()
+    best: DomainSpec | None = None
+    best_score = 0
+
+    for d in domains:
+        score = sum(1 for kw in d.get("keywords", []) if kw.lower() in q)
+        # Also check display_name and domain name
+        if d.get("display_name", "").lower() in q:
+            score += 2
+        if d.get("domain", "").lower() in q:
+            score += 1
+        if score > best_score:
+            best_score = score
+            best = d
+
+    # Fallback: MODULE_DOMAIN_MAP keyword matching
+    if best is None:
+        for code, info in MODULE_DOMAIN_MAP.items():
+            if info["ko"] in q or info["en"].lower() in q:
+                # Return None — no registered domain, but we know the area
+                break
+
+    return best if best_score > 0 else None
 
 
 # ---------------------------------------------------------------------------
-# Caches
+# System prompt context builder
 # ---------------------------------------------------------------------------
 
-DomainRegistry = dict[str, Any]
-SPWhitelist = dict[str, Any]
+def domain_to_context(domain: DomainSpec) -> str:
+    """Convert a domain spec to system prompt text."""
+    lines: list[str] = []
+    name = domain.get("display_name", domain.get("domain", ""))
+    lines.append(f"## Available Database Schema: {name}")
 
-_tables_registry: DomainRegistry = {}
-_sp_whitelist: SPWhitelist = {}
+    # Table groups
+    groups = domain.get("table_groups", {})
+    if groups:
+        lines.append("\n### Table Groups")
+        for gid, desc in groups.items():
+            lines.append(f"- **{gid}**: {desc}")
 
+    # Stored procedures
+    sps = domain.get("stored_procedures", [])
+    if sps:
+        lines.append("\n### Stored Procedures (whitelisted)")
+        for sp in sps:
+            params = sp.get("params", [])
+            param_str = ", ".join(
+                f"`{p.get('name','')}` ({p.get('type','')}" +
+                (", required" if p.get("required") else "") + ")"
+                for p in params
+            )
+            lines.append(f"- **{sp['name']}** - {sp.get('description','')}")
+            if param_str:
+                lines.append(f"  Params: {param_str}")
+            if sp.get("returns"):
+                lines.append(f"  Returns: {sp['returns']}")
 
-def _load_json(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    # Tables (compact)
+    tables = domain.get("tables", [])
+    if tables:
+        lines.append("\n### Tables")
+        for t in tables:
+            tname = t.get("name", "")
+            tdesc = t.get("description", "")
+            group = t.get("table_group", "")
+            lines.append(f"\n**{tname}** [{group}] {f'- {tdesc}' if tdesc else ''}")
 
+            cols = t.get("columns", [])
+            if cols:
+                # Show key columns (PK + first 10)
+                pk_cols = [c for c in cols if c.get("pk")]
+                other_cols = [c for c in cols if not c.get("pk")][:10]
+                show = pk_cols + other_cols
+                lines.append("| Column | Type | Description |")
+                lines.append("|--------|------|-------------|")
+                for c in show:
+                    pk_mark = " (PK)" if c.get("pk") else ""
+                    lines.append(
+                        f"| {c['name']}{pk_mark} | {c.get('type','')} | {c.get('description','')} |"
+                    )
+                if len(cols) > len(show):
+                    lines.append(f"| ... | | ({len(cols) - len(show)} more columns) |")
 
-def load_registry(base_dir: str | Path | None = None) -> DomainRegistry:
-    global _tables_registry
-    if _tables_registry:
-        return _tables_registry
-    if base_dir is None:
-        base_dir = Path(__file__).parent
-    base_dir = Path(base_dir)
-    _tables_registry = _load_json(base_dir / "domain_tables.json")
-    total = sum(len(v.get("tables", {})) for v in _tables_registry.values())
-    logger.info("Domain tables loaded: %d domains, %d tables", len(_tables_registry), total)
-    return _tables_registry
-
-
-def load_sp_whitelist(base_dir: str | Path | None = None) -> SPWhitelist:
-    global _sp_whitelist
-    if _sp_whitelist:
-        return _sp_whitelist
-    if base_dir is None:
-        base_dir = Path(__file__).parent
-    base_dir = Path(base_dir)
-    _sp_whitelist = _load_json(base_dir / "sp_whitelist.json")
-    total = sum(len(v.get("procedures", {})) for v in _sp_whitelist.values())
-    logger.info("SP whitelist loaded: %d domains, %d procedures", len(_sp_whitelist), total)
-    return _sp_whitelist
-
-
-def reload_all(base_dir: str | Path | None = None):
-    global _tables_registry, _sp_whitelist
-    _tables_registry = {}
-    _sp_whitelist = {}
-    load_registry(base_dir)
-    load_sp_whitelist(base_dir)
+    lines.append("")
+    lines.append(
+        "Use ONLY the tables and stored procedures listed above. "
+        "Use `list_tables` tool ONLY if you need tables not listed here. "
+        "After getting table/column info, ALWAYS proceed to query actual data with `db_query` or `sp_call`."
+    )
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# SP whitelist helpers
+# SP whitelist (extracted from all domain JSONs)
 # ---------------------------------------------------------------------------
 
 def get_all_whitelisted_sp_names() -> set[str]:
-    """Return all SP names from the whitelist."""
-    wl = load_sp_whitelist()
+    """Return all SP names from all loaded domains."""
+    domains = load_all_domains()
     names: set[str] = set()
-    for domain_info in wl.values():
-        for sp_name in domain_info.get("procedures", {}):
-            names.add(sp_name)
+    for d in domains:
+        for sp in d.get("stored_procedures", []):
+            if sp.get("name"):
+                names.add(sp["name"])
     return names
 
 
@@ -126,105 +247,21 @@ def is_sp_whitelisted(sp_name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Domain matching
+# API helpers
 # ---------------------------------------------------------------------------
 
-def match_domains(question: str) -> list[str]:
-    registry = load_registry()
-    q = question.lower()
-    matches: list[tuple[str, int]] = []
-
-    for code, info in MODULE_DOMAIN_MAP.items():
-        score = 0
-        if info["ko"] in q:
-            score += 2
-        if info["en"].lower() in q:
-            score += 1
-        if code in registry:
-            desc = registry[code].get("description", "")
-            if desc and desc in q:
-                score += 2
-        if score > 0:
-            matches.append((code, score))
-
-    matches.sort(key=lambda x: -x[1])
-    return [code for code, _ in matches]
-
-
-# ---------------------------------------------------------------------------
-# System prompt context builder
-# ---------------------------------------------------------------------------
-
-def get_domain_context(domain_codes: list[str] | None = None) -> str:
-    registry = load_registry()
-    sp_wl = load_sp_whitelist()
-
-    if not registry and not sp_wl:
-        return (
-            "No domain registry loaded. Use the `list_tables` tool to discover "
-            "available tables, then use `db_query` to query them."
-        )
-
-    if domain_codes is None or len(domain_codes) == 0:
-        lines = ["## Registered Domains"]
-        for code, info in registry.items():
-            label = MODULE_DOMAIN_MAP.get(code, {}).get("ko", code)
-            desc = info.get("description", label)
-            table_count = len(info.get("tables", {}))
-            lines.append(f"- **{code}** ({desc}): {table_count} tables")
-        return "\n".join(lines)
-
-    lines = ["## Available Database Schema"]
-
-    for code in domain_codes:
-        # Tables
-        domain_info = registry.get(code, {})
-        label = MODULE_DOMAIN_MAP.get(code, {}).get("ko", code)
-        desc = domain_info.get("description", label)
-        lines.append(f"\n### {code} - {desc}")
-
-        tables = domain_info.get("tables", {})
-        if tables:
-            lines.append("\n#### Tables")
-            for biz_name, tbl_info in tables.items():
-                full_name = to_full_table_name(code, biz_name)
-                tbl_desc = tbl_info.get("description", "")
-                lines.append(f"\n**{full_name}** {f'- {tbl_desc}' if tbl_desc else ''}")
-                columns = tbl_info.get("columns", {})
-                if columns:
-                    lines.append("| Column | Type | Title |")
-                    lines.append("|--------|------|-------|")
-                    for col_name, col_info in columns.items():
-                        lines.append(f"| {col_name} | {col_info.get('type','')} | {col_info.get('title','')} |")
-
-        # SPs
-        sp_domain = sp_wl.get(code, {})
-        procs = sp_domain.get("procedures", {})
-        if procs:
-            lines.append("\n#### Stored Procedures (whitelisted)")
-            for sp_name, sp_info in procs.items():
-                sp_desc = sp_info.get("description", "")
-                params = sp_info.get("params", {})
-                param_parts = []
-                for pname, pinfo in params.items():
-                    req = " *required*" if pinfo.get("required") else ""
-                    param_parts.append(f"`{pname}` ({pinfo.get('type','')}{req}): {pinfo.get('title','')}")
-                param_str = ", ".join(param_parts)
-                returns = sp_info.get("returns", "")
-                lines.append(f"- **{sp_name}** - {sp_desc}")
-                if param_str:
-                    lines.append(f"  - Params: {param_str}")
-                if returns:
-                    lines.append(f"  - Returns: {returns}")
-
-    lines.append("")
-    lines.append(
-        "IMPORTANT: Use the tables and stored procedures listed above. "
-        "Use `list_tables` tool ONLY if you need tables not listed here. "
-        "After getting table/column info, ALWAYS proceed to query the actual data with `db_query` or `sp_call`."
-    )
-    return "\n".join(lines)
-
-
-def get_all_domain_labels() -> dict[str, str]:
-    return {code: info["ko"] for code, info in MODULE_DOMAIN_MAP.items()}
+def get_domains_summary() -> list[dict]:
+    """Return summary for GET /api/domains endpoint."""
+    domains = load_all_domains()
+    return [
+        {
+            "domain": d.get("domain", ""),
+            "display_name": d.get("display_name", ""),
+            "db": d.get("db", ""),
+            "table_count": len(d.get("tables", [])),
+            "sp_count": len(d.get("stored_procedures", [])),
+            "table_groups": list(d.get("table_groups", {}).keys()),
+            "keywords": d.get("keywords", [])[:5],
+        }
+        for d in domains
+    ]
