@@ -1,11 +1,12 @@
 import { useState } from "react";
 
-export type Page = "dashboard" | "data-query" | "agent-chat";
+export type Page = "dashboard" | "data-query" | "agent-chat" | "ui-builder";
 
 export const PAGE_LABELS: Record<Page, string> = {
   dashboard: "대시보드",
   "data-query": "데이터 조회",
   "agent-chat": "에이전트 챗봇",
+  "ui-builder": "UI 빌더",
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +42,16 @@ function IconBot() {
       <line x1="8" y1="16" x2="8" y2="16" strokeWidth="3" strokeLinecap="round" />
       <line x1="12" y1="16" x2="12" y2="16" strokeWidth="3" strokeLinecap="round" />
       <line x1="16" y1="16" x2="16" y2="16" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconLayout() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="9" y1="21" x2="9" y2="9" />
     </svg>
   );
 }
@@ -93,6 +104,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "대시보드", icon: <IconGrid /> },
   { id: "data-query", label: "데이터 조회", icon: <IconDatabase /> },
   { id: "agent-chat", label: "에이전트 챗봇", icon: <IconBot /> },
+  { id: "ui-builder", label: "UI 빌더", icon: <IconLayout /> },
 ];
 
 // ---------------------------------------------------------------------------

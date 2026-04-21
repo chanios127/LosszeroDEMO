@@ -67,12 +67,12 @@ const MODULES: Module[] = [
     color: "from-violet-500/20 to-purple-500/10",
   },
   {
-    id: "dashboard" as Page,
-    title: "대시보드 빌더",
-    description: "자주 쓰는 쿼리를 고정하고 나만의 모니터링 대시보드를 구성합니다.",
-    tags: ["위젯 배치", "자동 갱신", "공유"],
+    id: "ui-builder",
+    title: "UI 빌더",
+    description: "데이터를 수집하고 LLM이 제안하는 시각화로 대시보드 위젯을 조립합니다.",
+    tags: ["자연어 → SQL", "AI 차트 제안", "위젯 조립"],
     icon: <IconChart />,
-    status: "soon",
+    status: "active",
     color: "from-amber-500/20 to-orange-500/10",
   },
 ];

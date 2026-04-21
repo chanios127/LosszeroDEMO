@@ -31,6 +31,7 @@ type Action =
   | { type: "CONTINUE_PROMPT"; pending: PendingContinue }
   | { type: "CONTINUE_RESOLVED" }
   | { type: "SET_ACTIVE_RESULT"; id: string | null }
+  | { type: "LOAD_MESSAGES"; messages: ChatMessage[] }
   | { type: "RESET" };
 
 const initialState: State = {
@@ -144,6 +145,15 @@ function reducer(state: State, action: Action): State {
 
     case "SET_ACTIVE_RESULT":
       return { ...state, activeResultId: action.id };
+
+    case "LOAD_MESSAGES":
+      return {
+        ...state,
+        messages: action.messages,
+        isStreaming: false,
+        error: null,
+        pendingContinue: null,
+      };
 
     case "RESET":
       return initialState;
@@ -277,5 +287,19 @@ export function useAgentStream() {
     dispatch({ type: "SET_ACTIVE_RESULT", id });
   }, []);
 
-  return { ...state, send, cancel, reset, respondToContinue, setActiveResult };
+  const loadMessages = useCallback((messages: ChatMessage[], sessionId: string | null = null) => {
+    esRef.current?.close();
+    sessionRef.current = sessionId;
+    dispatch({ type: "LOAD_MESSAGES", messages });
+  }, []);
+
+  return {
+    ...state,
+    send,
+    cancel,
+    reset,
+    respondToContinue,
+    setActiveResult,
+    loadMessages,
+  };
 }

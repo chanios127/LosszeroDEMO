@@ -165,6 +165,107 @@ async def execute_sql(body: SqlRequest):
         return {"data": data, "rows": len(data)}
 
 
+# ---------------------------------------------------------------------------
+# UI Builder endpoints (Track C)
+# ---------------------------------------------------------------------------
+
+class SuggestVizRequest(BaseModel):
+    sample: list[dict]
+
+
+@app.post("/api/suggest_viz")
+async def suggest_viz(body: SuggestVizRequest):
+    """LLM-based viz suggestion. Analyzes sample data shape and returns viz_hint + axes."""
+    if not body.sample:
+        return {"viz_hint": "table", "x_axis": None, "y_axis": None, "reasoning": "데이터 없음"}
+
+    # Heuristic first — deterministic fallback
+    keys = list(body.sample[0].keys())
+    numeric_cols = [
+        k for k in keys if isinstance(body.sample[0].get(k), (int, float))
+    ]
+    non_numeric = [k for k in keys if k not in numeric_cols]
+
+    # Default
+    viz_hint = "table"
+    x_axis = non_numeric[0] if non_numeric else (keys[0] if keys else None)
+    y_axis = numeric_cols[0] if numeric_cols else None
+    reasoning = "데이터 형태 기반 자동 추론"
+
+    if len(body.sample) == 1 and len(keys) == 1:
+        viz_hint = "number"
+        reasoning = "단일 값 — 숫자 카드로 표시"
+    elif numeric_cols and non_numeric:
+        date_hints = {"date", "month", "week", "year", "time", "dt", "일", "월", "주"}
+        is_time_series = any(
+            any(h in k.lower() for h in date_hints) for k in non_numeric
+        )
+        if is_time_series:
+            viz_hint = "line_chart"
+            reasoning = f"{x_axis}(시계열) 대비 {y_axis} 추이"
+        else:
+            viz_hint = "bar_chart"
+            reasoning = f"{x_axis}별 {y_axis} 비교"
+
+    # Optional: enrich with LLM (short prompt, low cost). For PoC, return heuristic only.
+    return {
+        "viz_hint": viz_hint,
+        "x_axis": x_axis,
+        "y_axis": y_axis,
+        "reasoning": reasoning,
+    }
+
+
+class GenerateSqlRequest(BaseModel):
+    prompt: str
+    domain: str | None = None
+
+
+@app.post("/api/generate_aggregation_sql")
+async def generate_aggregation_sql(body: GenerateSqlRequest):
+    """LLM-based SQL generation for aggregation queries. Single-shot, no SSE."""
+    llm = get_provider()
+
+    # Build domain context
+    domain_ctx = ""
+    if body.domain:
+        for d in load_all_domains():
+            if d.get("domain") == body.domain:
+                domain_ctx = domain_to_context(d)
+                break
+
+    system_prompt = (
+        "You are a T-SQL expert. Given a natural language request, output ONLY a valid SELECT "
+        "statement that performs the requested aggregation. Do not include any explanation, "
+        "markdown, or code fences — output raw SQL only. Use TOP N instead of LIMIT N. "
+        "Ensure the query is read-only (SELECT only, no DML/DDL).\n\n"
+        + domain_ctx
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": body.prompt},
+    ]
+
+    sql_parts: list[str] = []
+    async for event in llm.complete(messages, []):
+        if event.type.value == "text_delta":
+            sql_parts.append(event.delta)
+        elif event.type.value == "done":
+            break
+        elif event.type.value == "error":
+            raise HTTPException(status_code=500, detail=event.message)
+
+    sql = "".join(sql_parts).strip()
+    # Strip common wrappers
+    if sql.startswith("```"):
+        lines = sql.split("\n")
+        sql = "\n".join(l for l in lines if not l.strip().startswith("```"))
+    sql = sql.strip()
+
+    return {"sql": sql, "explanation": "LLM 생성"}
+
+
 @app.post("/api/query", response_model=QueryResponse)
 async def start_query(body: QueryRequest):
     session_id = body.session_id or str(uuid.uuid4())

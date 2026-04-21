@@ -3,6 +3,7 @@ import AppShell, { type Page } from "./components/AppShell";
 import DashboardPage from "./pages/DashboardPage";
 import DataQueryPage from "./pages/DataQueryPage";
 import AgentChatPage from "./pages/AgentChatPage";
+import UIBuilderPage from "./pages/UIBuilderPage";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
@@ -18,6 +19,9 @@ export default function App() {
       </div>
       <div className={currentPage === "agent-chat" ? "h-full" : "hidden"}>
         <AgentChatPage />
+      </div>
+      <div className={currentPage === "ui-builder" ? "h-full" : "hidden"}>
+        <UIBuilderPage />
       </div>
     </AppShell>
   );
