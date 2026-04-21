@@ -40,20 +40,26 @@ LosszeroDEMO/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx                      # 라우터 (CSS hidden 방식 — 탭 전환 세션 유지)
+│   │   ├── App.tsx                      # CSS-hidden 라우터 (탭 전환 세션 유지)
 │   │   ├── pages/
-│   │   │   ├── DashboardPage.tsx        # 대시보드 (도메인 수 동적)
-│   │   │   ├── DataQueryPage.tsx        # 데이터 조회 (채팅 + 결과)
-│   │   │   └── AgentChatPage.tsx        # 에이전트 챗봇 (도메인 동적 카드)
+│   │   │   ├── DashboardPage.tsx        # 허브 + 도메인 수 동적
+│   │   │   ├── DataQueryPage.tsx        # 직접 SQL (LLM 없음, /api/sql)
+│   │   │   ├── AgentChatPage.tsx        # 대화형 (사이드바 + 인라인 차트)
+│   │   │   └── UIBuilderPage.tsx        # 3단계 위저드 (데이터 → 시각화 → 위젯)
 │   │   ├── components/
-│   │   │   ├── AppShell.tsx             # 사이드바 + 헤더 레이아웃
+│   │   │   ├── AppShell.tsx             # 사이드바(접이식) + 헤더
 │   │   │   ├── ChatInput.tsx            # 자연어 입력
-│   │   │   ├── MessageThread.tsx        # 대화 스레드 (마크다운 + <think> 블록)
-│   │   │   ├── AgentTrace.tsx           # 도구 실행 추적 (접이식)
-│   │   │   ├── VizPanel.tsx             # 차트 시각화 (SwitchableViz, InlineViz)
-│   │   │   └── ResultsBoard.tsx         # 결과 히스토리 패널
+│   │   │   ├── MessageThread.tsx        # 마크다운 + <think> + 인라인 차트
+│   │   │   ├── AgentTrace.tsx           # ToolResultInlineViz + CollapsibleTrace
+│   │   │   ├── ConversationList.tsx     # 대화 사이드바 (검색/rename/삭제/export)
+│   │   │   ├── VizPanel.tsx             # SwitchableViz + InlineViz + DataTable
+│   │   │   ├── ResultsBoard.tsx         # 결과 히스토리 패널 (미사용)
+│   │   │   └── builder/
+│   │   │       ├── DataSourceStep.tsx   # SQL 직접 / 자연어 입력
+│   │   │       └── VizSuggestionStep.tsx # LLM 차트 제안 + 미리보기
 │   │   ├── hooks/
-│   │   │   └── useAgentStream.ts        # SSE + useReducer 상태관리
+│   │   │   ├── useAgentStream.ts        # SSE + useReducer
+│   │   │   └── useConversationStore.ts  # localStorage 영속화
 │   │   └── types/
 │   │       └── events.ts                # AgentEvent, ChatMessage, ResultEntry
 │   ├── package.json
@@ -185,10 +191,35 @@ LosszeroDEMO/
   - `Brush` — Bar/Line 차트 드래그 줌
   - 클릭 포커스 — Bar/Pie 개별 항목 강조
 
-### 상태 관리 (`useAgentStream`)
-- `useReducer` 기반 — messages[], results[], sessionId, pendingContinue
-- `ResultEntry` — 쿼리 결과 스냅샷 자동 누적 (ResultsBoard에서 히스토리 표시)
-- 탭 전환해도 상태 유지 (CSS hidden)
+### 상태 관리
+- `useAgentStream` — useReducer 기반 (messages, results, sessionId, pendingContinue)
+- `useConversationStore` — localStorage 영속화 (대화 목록/저장/불러오기/export)
+- 탭 전환 시 CSS hidden으로 DOM 유지 → 세션 유지
+- localStorage key: `llm-harness-conversations`
+
+### 인라인 시각화
+- `MessageThread` 내 `CollapsibleTrace` → `ToolResultInlineViz`
+  - `db_query` / `sp_call` 결과 데이터를 각 턴마다 접이식 차트 카드로 표시
+  - 기본 접힘, 클릭 시 `InlineViz` 렌더
+- `FinalEvent.data`는 메시지 하단에 `InlineViz`로 별도 표시
+
+---
+
+## UI 빌더 (3단계 위저드)
+
+```
+Step 1: DataSourceStep
+  ├─ SQL 직접 입력 → POST /api/sql
+  └─ 자연어 → POST /api/generate_aggregation_sql → SQL 생성 → 자동 실행
+
+Step 2: VizSuggestionStep
+  └─ POST /api/suggest_viz (샘플 5행)
+      → viz_hint + x_axis/y_axis 추천 (현재는 휴리스틱)
+      → SwitchableViz로 즉시 미리보기
+
+Step 3: 위젯 저장 (Phase 6 예정)
+  └─ react-grid-layout 기반 드래그 그리드 + localStorage 영속화
+```
 
 ---
 

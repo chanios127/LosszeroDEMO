@@ -1,324 +1,380 @@
-# LossZero Demo — 현재 구현 명세서
+# LLM Harness — 시스템 명세서
 
-> 작성일: 2026-04-14  
-> 상태: 프로토타이핑 단계 (구조 개편 전)
+> 최종 갱신: 2026-04-16 (Phase 5 완료 시점)
 
----
-
-## 1. 시스템 개요
-
-MSSQL 데이터베이스에 자연어로 질문하면 LLM이 SQL을 생성·실행하고 결과를 시각화하는 웹 애플리케이션.
-
-```
-Browser (Next.js :3000)
-  └─ /api/* proxy
-       └─ FastAPI Backend (:8080, Docker)
-            ├─ LLM (LM Studio :1234 or Claude API)
-            └─ MSSQL (3z.losszero.net:21433)
-```
+MSSQL ERP/MES/그룹웨어 데이터를 자연어로 조회하고 시각화하는 에이전트 시스템.
 
 ---
 
-## 2. 인프라 / 배포
+## 1. 기술 스택
 
-| 항목 | 값 |
-|------|-----|
-| 백엔드 컨테이너 | `python:3.11-slim-bookworm` |
-| ODBC 드라이버 | Microsoft ODBC Driver 17 for SQL Server |
-| 외부 포트 | `8080:8000` |
-| 볼륨 마운트 | `./backend:/app` (uvicorn --reload 활성) |
-| env 로딩 | `env_file: .env` |
-| 프론트엔드 | 로컬 dev server (`next dev --turbopack`, :3000) |
-
-**`docker-compose.yml`** — backend 서비스만 존재 (PostgreSQL/Redis 없음)
+| 레이어 | 기술 |
+|--------|------|
+| Frontend | React 18.3, Vite 5, TypeScript 5, Tailwind CSS 3 |
+| 시각화 | Recharts 2.12, @tanstack/react-table, react-markdown, remark-gfm |
+| Backend | FastAPI, Python 3.12+, pyodbc (ODBC async via `run_in_executor`) |
+| LLM | Anthropic SDK (Claude) / httpx (LM Studio OpenAI 호환) |
+| DB | MSSQL (읽기 전용) |
+| 패키지 관리 | uv (Python), pnpm (Node) |
 
 ---
 
-## 3. 환경 변수 (`.env`)
+## 2. 디렉토리 구조
 
-```env
-# MSSQL
-MSSQL_SERVER=3z.losszero.net,21433
-MSSQL_PORT=21433
-MSSQL_DATABASE=LzPRJ_COM_3Z
-MSSQL_USER=lzxpdev_prj
-MSSQL_PASSWORD=lzxpdev_prj!
-MSSQL_CONNECTION_STRING=        # 직접 지정 시 우선 적용
-
-# LLM 프로바이더
-LLM_PROVIDER=claude             # lm_studio | claude
-
-# LM Studio
-LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
-LM_STUDIO_API_KEY=lm-studio
-LM_STUDIO_MODEL=                # 비어있으면 payload에서 생략
-
-# Claude API
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-6
-CLAUDE_MODEL=claude-sonnet-4-6
+```
+LosszeroDEMO/
+├── backend/
+│   ├── main.py                          # FastAPI 엔트리, 모든 라우터
+│   ├── pyproject.toml                   # uv 의존성
+│   ├── uv.lock
+│   ├── agent/
+│   │   ├── events.py                    # SSE 이벤트 타입 6종
+│   │   └── loop.py                      # AgentLoop (ReAct 멀티턴, 10턴 + continue)
+│   ├── llm/
+│   │   ├── base.py                      # LLMProvider ABC, Message, ToolSchema
+│   │   ├── __init__.py                  # Provider 팩토리
+│   │   ├── claude.py                    # Anthropic 스트리밍
+│   │   └── lm_studio.py                # OpenAI 호환 + <execute_sql> fallback
+│   ├── tools/
+│   │   ├── base.py                      # Tool ABC
+│   │   ├── list_tables.py              # 테이블명 조회 + 도메인 분류
+│   │   ├── db_query.py                  # SELECT 전용 (DML/DDL regex 차단)
+│   │   └── sp_call.py                   # SP 화이트리스트 실행
+│   ├── db/
+│   │   └── connection.py                # PyodbcPool + asyncio wrapper
+│   ├── domains/
+│   │   ├── loader.py                    # schema_registry 글로빙 + 매칭 + 프롬프트 변환
+│   │   └── __init__.py
+│   └── schema_registry/
+│       └── domains/
+│           └── groupware.json           # GW 도메인 (13 tables, 6 groups)
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx                      # CSS-hidden 라우터 (탭 전환 세션 유지)
+│   │   ├── main.tsx
+│   │   ├── index.css                    # Tailwind 지시자
+│   │   ├── types/
+│   │   │   └── events.ts                # AgentEvent, ChatMessage, ResultEntry
+│   │   ├── pages/
+│   │   │   ├── DashboardPage.tsx        # 허브 + 도메인 수 실시간 표시
+│   │   │   ├── DataQueryPage.tsx        # 직접 SQL 에디터 (LLM 없음)
+│   │   │   ├── AgentChatPage.tsx        # 대화형 + 사이드바 + 인라인 차트
+│   │   │   └── UIBuilderPage.tsx        # 3단계 위저드 (데이터→시각화→위젯)
+│   │   ├── components/
+│   │   │   ├── AppShell.tsx             # 사이드바(208px↔56px) + 헤더
+│   │   │   ├── ChatInput.tsx            # 자연어 입력 (Shift+Enter 줄바꿈)
+│   │   │   ├── MessageThread.tsx        # 마크다운 + <think> 블록 + 인라인 차트
+│   │   │   ├── AgentTrace.tsx           # ToolResultInlineViz + CollapsibleTrace
+│   │   │   ├── ConversationList.tsx     # 대화 사이드바 (검색/rename/삭제/export)
+│   │   │   ├── VizPanel.tsx             # Chart 시각화 (Switchable/Inline)
+│   │   │   ├── ResultsBoard.tsx         # 결과 히스토리 패널 (현재 미사용)
+│   │   │   └── builder/
+│   │   │       ├── DataSourceStep.tsx   # SQL / 자연어 → 데이터 수집
+│   │   │       └── VizSuggestionStep.tsx # LLM 차트 제안 + 미리보기
+│   │   └── hooks/
+│   │       ├── useAgentStream.ts        # SSE + useReducer
+│   │       └── useConversationStore.ts  # localStorage 영속화
+│   ├── package.json
+│   ├── vite.config.ts                   # 5173 포트, /api → 127.0.0.1:8000 프록시
+│   ├── tsconfig.json
+│   └── tailwind.config.ts
+│
+├── .claude/skills/                      # Claude Code 세션 전용 도구 (런타임 미사용)
+│   ├── LosszeroDB_3Z_MES/               # MES DB (DB0=표준, DB1=비즈니스)
+│   └── LosszeroDB_GW/                   # GW DB
+│
+├── README.md                            # 빠른 시작
+├── ARCHITECTURE.md                      # 상세 아키텍처
+├── SPEC.md                              # ← 이 문서 (시스템 명세)
+├── ROADMAP.md                           # 미이행 로드맵
+├── DESIGN.md / DESIGN-phase*.md         # 과거 설계 기록
+└── .env.example
 ```
 
 ---
 
-## 4. 백엔드
+## 3. 데이터 흐름
 
-### 4-1. 디렉터리 구조
+### 3.1 AgentLoop 기반 (에이전트 챗봇)
 
 ```
-backend/
-├── Dockerfile
-├── requirements.txt
-└── app/
-    ├── __init__.py
-    ├── main.py
-    ├── config.py
-    ├── routers/
-    │   ├── health.py
-    │   └── query.py
-    ├── llm/
-    │   ├── __init__.py       # get_llm_client() 팩토리
-    │   ├── base.py           # LLMClient ABC
-    │   ├── lm_studio.py      # LM Studio 구현
-    │   └── claude.py         # Claude API 구현
-    ├── mssql/
-    │   ├── connection.py     # pyodbc 실행 레이어
-    │   └── schema.py         # 스키마 조회 + 캐시
-    └── pipeline/
-        ├── __init__.py
-        ├── text_to_sql.py    # 레거시: 항상 SQL 실행
-        └── agent.py          # 현재: tool calling 기반 agent
+사용자 입력
+  │
+  ▼
+[ChatInput] ──POST /api/query {query, session_id?}──▶ [main.py]
+                                    │
+                                    ├─ 세션 히스토리 로드 (MAX_HISTORY=20)
+                                    ├─ match_domain(query) → 키워드 매칭
+                                    ├─ domain_to_context() → 시스템 프롬프트 주입
+                                    └─ asyncio.create_task(AgentLoop.run())
+                                         │
+  ┌──GET /api/stream/{key} (SSE)────────┘
+  │
+  ▼
+[AgentLoop] ◀─────── 10턴 단위 반복 (continue_callback으로 연장) ──────┐
+  │                                                                     │
+  ├─ LLM.complete(messages, tools)                                      │
+  │   ├─ TEXT_DELTA → LLMChunkEvent (스트리밍)                           │
+  │   ├─ TOOL_CALL → 도구 선택                                           │
+  │   └─ DONE → 루프 탈출                                                │
+  │                                                                     │
+  ├─ 도구 실행                                                           │
+  │   ├─ tool.execute(input)                                            │
+  │   ├─ ToolResultEvent → SSE 전송                                      │
+  │   └─ 메시지 히스토리에 assistant(tool_use) + tool(result) 추가        │
+  │                                                                     │
+  ├─ turn_limit 도달 + tool_call 진행 중                                 │
+  │   ├─ ContinuePromptEvent → 프론트 [계속/중단] 버튼                   │
+  │   ├─ asyncio.Event 대기 (120s 타임아웃)                              │
+  │   └─ [계속] → turn_limit += 10, [중단] → FinalEvent                  │
+  │                                                                     │
+  └─ tool_call 없으면 → FinalEvent(answer, viz_hint, data) ─────────────┘
+                              │
+                              ▼
+                  [MessageThread 렌더링]
+                    ├─ 마크다운 답변 (react-markdown + remark-gfm)
+                    ├─ <think>...</think> → 접이식 ThinkBlock
+                    ├─ CollapsibleTrace (도구 호출 전체 내역)
+                    ├─ ToolResultInlineViz (db_query/sp_call 결과 인라인 차트)
+                    └─ InlineViz (FinalEvent data → SwitchableViz)
 ```
 
-### 4-2. API 엔드포인트
+### 3.2 직접 SQL (데이터 조회 페이지)
 
-| Method | Path | 설명 | Request | Response |
-|--------|------|------|---------|----------|
-| `GET` | `/health` | 헬스체크 | — | `{"status":"ok"}` |
-| `POST` | `/query` | 레거시 Text-to-SQL (항상 SQL 실행) | `{"question": str}` | `QueryResponse` |
-| `POST` | `/query/chat` | Agent 챗봇 (선택적 SQL 실행) | `{"messages": [{role, content}]}` | `ChatResponse` |
-| `GET` | `/query/schema` | 스키마 조회 | `?refresh=bool` | `{tables: [...]}` |
-
-**QueryResponse**
-```json
-{ "question": "...", "sql": "...", "results": [...], "error": null }
+```
+DataQueryPage textarea
+  │ Ctrl+Enter
+  ▼
+POST /api/sql {sql}
+  │
+  ├─ _assert_read_only() → DML/DDL regex 차단
+  ├─ pyodbc cursor.execute() via run_in_executor
+  └─ {data: [...], rows: N}
+  │
+  ▼
+DataTable 렌더링 (히스토리 누적, 최신 위)
 ```
 
-**ChatResponse**
+### 3.3 UI 빌더 (Track C 스캐폴딩)
+
+```
+Step 1: 데이터 수집
+  ├─ SQL 직접: /api/sql
+  └─ 자연어: /api/generate_aggregation_sql → LLM이 T-SQL 생성 → /api/sql 자동 실행
+
+Step 2: 시각화 구상
+  └─ /api/suggest_viz (샘플 5행) → viz_hint + x/y 축 추천 → SwitchableViz 미리보기
+
+Step 3: 위젯 저장 (Phase 6 예정)
+```
+
+---
+
+## 4. API 명세
+
+| Method | Path | 설명 | Body / Query |
+|--------|------|------|-------------|
+| GET | `/health` | 서버 상태 | — |
+| GET | `/api/domains` | 등록 도메인 목록 | — |
+| POST | `/api/sql` | 직접 SQL 실행 (LLM 없음) | `{sql: string}` |
+| POST | `/api/query` | 에이전트 실행 시작 | `{query, session_id?}` |
+| GET | `/api/stream/{stream_key}` | SSE 이벤트 스트림 | — |
+| POST | `/api/continue/{stream_key}` | 10턴 초과 승인 | `{proceed: bool}` |
+| DELETE | `/api/session/{session_id}` | 세션 정리 | — |
+| POST | `/api/suggest_viz` | 데이터 → 차트 추천 | `{sample: [...]}` |
+| POST | `/api/generate_aggregation_sql` | 자연어 → T-SQL | `{prompt, domain?}` |
+
+### 4.1 SSE 이벤트
+
+| 이벤트 | 발생 시점 | 데이터 |
+|--------|----------|--------|
+| `tool_start` | 도구 호출 시작 | `{tool, input, turn}` |
+| `tool_result` | 도구 실행 완료 | `{tool, output, rows, error, turn}` |
+| `llm_chunk` | LLM 텍스트 델타 | `{delta}` |
+| `continue_prompt` | 10턴 도달 | `{turn, message}` |
+| `final` | 에이전트 완료 | `{answer, viz_hint, data}` |
+| `error` | 에러 발생 | `{message}` |
+
+### 4.2 viz_hint 값
+`"bar_chart" | "line_chart" | "pie_chart" | "table" | "number"`
+
+---
+
+## 5. 도메인 레지스트리
+
+**위치**: `backend/schema_registry/domains/*.json`
+
+**현재 등록**: `groupware.json` (13 tables, 6 groups: attendance, task, workboard, approval, meeting, hr_etc)
+
+**JSON 구조**:
 ```json
 {
-  "type": "text | sql_result",
-  "content": "LLM 응답 텍스트",
-  "sql": "SELECT ...",
-  "results": [...],
-  "error": null
+  "domain": "groupware",
+  "display_name": "그룹웨어",
+  "db": "GW",
+  "keywords": ["출근", "퇴근", "근태", ...],
+  "table_groups": {"attendance": "근태 — 출퇴근 기록"},
+  "stored_procedures": [],
+  "tables": [
+    {
+      "name": "dbo.TGW_AttendList",
+      "table_group": "attendance",
+      "description": "출/퇴근 기록",
+      "columns": [
+        {"name": "at_AttDt", "type": "datetime", "pk": true, "description": "출근일시"}
+      ],
+      "joins": [{"target": "...", "on": "...", "type": "one_to_many"}]
+    }
+  ]
 }
 ```
 
-### 4-3. LLM 레이어
+**로더 동작**:
+1. 서버 시작 시 `*.json` 글로빙 → 메모리 캐시
+2. 사용자 질문 → keywords 매칭 (+ display_name/domain 보너스)
+3. 최적 도메인의 테이블/컬럼/SP를 시스템 프롬프트에 주입
+4. SP 화이트리스트: 각 JSON의 `stored_procedures`에서 자동 추출
 
-**`LLMClient` ABC** (`llm/base.py`)
-```python
-async def chat(messages, **kwargs) -> str
-async def chat_with_tools(messages, tools) -> {"content": str, "tool_call": {...} | None}
-```
-
-**`LMStudioClient`** (`llm/lm_studio.py`)
-- httpx POST → `{base_url}/chat/completions` (OpenAI 호환)
-- `chat_with_tools`: tool calling 시도 → 400 응답 시 `<execute_sql>` tag 기반 fallback
-
-**`ClaudeClient`** (`llm/claude.py`)
-- anthropic SDK (`AsyncAnthropic`)
-- tools를 Anthropic 포맷으로 변환 (`input_schema`)
-- `ToolUseBlock` vs `TextBlock` 분기
-
-### 4-4. Agent Pipeline (`pipeline/agent.py`)
-
-**흐름:**
-```
-messages → LLM (chat_with_tools, tools=[list_tables, execute_sql])
-  ├─ tool_call: list_tables(filter?) → 스키마 조회 → 결과 주입 → 루프 계속
-  ├─ tool_call: execute_sql(sql) → DB 실행 → 결과 주입 → 루프 계속
-  └─ 텍스트 응답 → 최종 반환
-```
-
-**설정값:**
-- `MAX_AGENT_STEPS = 5` (무한루프 방지)
-- `list_tables` 결과: 최대 80개 테이블 반환 (filter 적용 후)
-- `execute_sql` 결과: 최대 100행 LLM에 전달
-
-**Tools 정의:**
-- `list_tables(filter?: str)` — 테이블 목록 + 컬럼명 조회
-- `execute_sql(sql: str)` — T-SQL SELECT 실행
-
-**시스템 프롬프트:** 스키마 미포함 (tool로 필요 시 조회)
-
-### 4-5. MSSQL 레이어
-
-**`mssql/schema.py`**
-- `_fetch_schema()`: `INFORMATION_SCHEMA.TABLES/COLUMNS` 쿼리 (synchronous pyodbc)
-- `get_schema(refresh=False)`: async 래퍼, 모듈 레벨 인메모리 캐시 (`_schema_cache`)
-- `schema_to_prompt(tables)`: `schema.table(col type?, ...)` 형식 (레거시 파이프라인용)
-
-**`mssql/connection.py`**
-- `execute_query(sql)`: async, `loop.run_in_executor()` 로 blocking 방지
-- `mssql_cursor()`: context manager, 커서 생명주기 관리
+**프론트엔드 연동**: `GET /api/domains` → AgentChatPage, DashboardPage 동적 렌더링
 
 ---
 
-## 5. 프론트엔드
+## 6. 에이전트 도구 (AgentLoop tools)
 
-### 5-1. 스택
+| 도구 | 용도 | 파라미터 |
+|------|------|---------|
+| `list_tables` | DB 테이블명 조회 + 도메인 자동 분류 | `{pattern?}` |
+| `db_query` | SELECT 쿼리 (DML/DDL regex 차단) | `{sql, params?}` |
+| `sp_call` | 화이트리스트 SP 실행 | `{sp_name, params?}` |
 
-| 항목 | 값 |
-|------|-----|
-| 프레임워크 | Next.js 15 (App Router) |
-| 스타일 | Tailwind CSS v4 (`@tailwindcss/postcss`) |
-| 차트 | recharts ^3.8.1 |
-| HTTP | axios |
-| 스키마 ER 다이어그램 | @xyflow/react + @dagrejs/dagre |
-| 언어 | TypeScript |
-
-### 5-2. 디렉터리 구조
-
-```
-frontend/src/
-├── app/
-│   ├── layout.tsx          # RootLayout (Server Component)
-│   ├── page.tsx            # 메인 페이지 ('use client')
-│   └── globals.css         # Tailwind v4 import
-├── api/
-│   ├── client.ts           # axios 인스턴스 (/api 프록시)
-│   └── query.ts            # postQuery, postChat, getSchema
-├── types/
-│   └── index.ts            # ChatMessage, AgentResponse, TableInfo 등
-└── components/
-    ├── Chat/
-    │   ├── ChatPanel.tsx       # 채팅 컨테이너, 자동 스크롤
-    │   ├── MessageBubble.tsx   # 메시지 버블 (sql_result 인라인 미리보기)
-    │   └── QueryInput.tsx      # textarea, Enter 전송, auto-resize
-    ├── Results/
-    │   ├── ResultsPanel.tsx    # 우측 패널, text/sql_result 분기
-    │   ├── SqlBlock.tsx        # SQL 코드 블록, 복사 버튼
-    │   ├── ResultTable.tsx     # 결과 테이블 (NULL 처리, 교차 행 색상)
-    │   └── ChartPanel.tsx      # recharts Bar/Line 자동 감지, 토글
-    └── Schema/
-        ├── SchemaGraph.tsx     # dynamic() SSR 비활성 래퍼
-        └── SchemaGraphInner.tsx # ReactFlow + Dagre ER 다이어그램
-```
-
-### 5-3. 타입 정의 (`types/index.ts`)
-
-```typescript
-interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  type: 'text' | 'sql_result'
-  sql?: string
-  results?: Record<string, unknown>[]
-  error?: string | null
-}
-
-interface AgentResponse {
-  type: 'text' | 'sql_result'
-  content: string
-  sql?: string
-  results?: Record<string, unknown>[]
-  error?: string | null
-}
-
-interface TableInfo { schema, name, columns: ColumnInfo[] }
-interface ColumnInfo { name, type, nullable }
-```
-
-### 5-4. 상태 관리 (`page.tsx`)
-
-- `messages: ChatMessage[]` — 전체 대화 히스토리
-- `loading: boolean` — 요청 중 상태
-- `activeId: string | null` — 선택된 메시지 ID
-- `activeMessage: ChatMessage | null` — 우측 패널 표시 데이터
-- `rightTab: 'results' | 'schema'` — 우측 탭 상태
-
-메시지 전송 시 전체 history를 `postChat()`에 포함하여 대화 컨텍스트 유지.
-
-### 5-5. API 프록시
-
-`next.config.ts`:
-```
-/api/:path* → http://localhost:8080/:path*
-```
-
-### 5-6. ChartPanel 자동 감지 로직
-
-- 결과 컬럼 분석: 수치형 컬럼 vs 문자열 컬럼 분리
-- 수치 + 문자열 컬럼 모두 있을 때만 차트 표시
-- label 컬럼값이 날짜 패턴(`YYYY-MM-*`) → LineChart, 그 외 → BarChart
-- 최대 50행 렌더링
-- Bar/Line 수동 토글 버튼
+**last_data 로직**: `_DATA_TOOLS = {"db_query", "sp_call"}` — 이 도구 결과만 `FinalEvent.data`로 저장 (메타데이터 도구 제외).
 
 ---
 
-## 6. 알려진 문제 / 개편 필요 사항
+## 7. LLM Provider
 
-### 6-1. Agent 구조 문제
+| Provider | 연결 | Tool Calling | Fallback |
+|----------|------|-------------|----------|
+| Claude | Anthropic SDK `messages.stream()` | 네이티브 tool_use | — |
+| LM Studio | httpx `/v1/chat/completions` | 네이티브 (모델 의존) | HTTP 400 시 `<execute_sql>...</execute_sql>` 추출 |
 
-| 문제 | 내용 |
-|------|------|
-| 스키마 전체 주입 시도 | 초기 설계 시 1,566개 테이블 스키마를 시스템 프롬프트에 넣어 rate limit 소진 |
-| tool calling 루프 미검증 | `list_tables` → `execute_sql` 다단계 흐름 실제 동작 미확인 |
-| LM Studio fallback 미완성 | tag 기반 fallback이 `list_tables` tool을 지원하지 않음 |
-| 대화 히스토리 전송 방식 | 매 요청마다 전체 history 전송 → 대화가 길어질수록 토큰 증가 |
-
-### 6-2. 프론트엔드 잔여 이슈
-
-| 문제 | 내용 |
-|------|------|
-| `ChatPanel.tsx` 하드코딩 | `msg.queryResponse` 참조 잔재 (구 타입) → `msg.type` 기반으로 수정 필요 |
-| 로딩 메시지 | "SQL 생성 중..." 고정 텍스트 → agent 흐름에 맞게 변경 필요 |
-| `App.tsx` 미삭제 | `frontend/src/App.tsx` 파일이 잔존 (Next.js 이전 후 불필요) |
-
-### 6-3. 기타
-
-| 문제 | 내용 |
-|------|------|
-| `/query` 레거시 엔드포인트 | 현재 프론트에서 미사용이지만 코드 잔존 |
-| 스키마 캐시 무효화 없음 | 서버 재시작 전까지 캐시 유지, Schema 탭 새로고침 버튼 미구현 |
-| Docker .env 민감정보 | API 키가 `.env`에 평문 저장 (개발 환경 전용) |
+**시스템 프롬프트**: 고정 기본 + `domain_to_context()` 동적 합성. system role 메시지는 각 provider가 적절히 병합.
 
 ---
 
-## 7. 파일별 현재 상태 요약
+## 8. DB 연결
 
-| 파일 | 상태 | 비고 |
-|------|------|------|
-| `backend/app/config.py` | ✅ 완성 | |
-| `backend/app/main.py` | ✅ 완성 | |
-| `backend/app/routers/health.py` | ✅ 완성 | |
-| `backend/app/routers/query.py` | ✅ 완성 | `/query`, `/query/chat`, `/query/schema` |
-| `backend/app/llm/base.py` | ✅ 완성 | `chat` + `chat_with_tools` ABC |
-| `backend/app/llm/lm_studio.py` | ⚠️ 부분 완성 | tag fallback이 `list_tables` 미지원 |
-| `backend/app/llm/claude.py` | ✅ 완성 | |
-| `backend/app/pipeline/text_to_sql.py` | ⚠️ 레거시 | 구조 개편 시 제거 대상 |
-| `backend/app/pipeline/agent.py` | ⚠️ 미검증 | tool loop 실동작 확인 필요 |
-| `backend/app/mssql/schema.py` | ✅ 완성 | |
-| `backend/app/mssql/connection.py` | ✅ 완성 | |
-| `frontend/src/app/page.tsx` | ✅ 완성 | |
-| `frontend/src/app/layout.tsx` | ✅ 완성 | |
-| `frontend/src/api/client.ts` | ✅ 완성 | |
-| `frontend/src/api/query.ts` | ✅ 완성 | `postQuery`, `postChat`, `getSchema` |
-| `frontend/src/types/index.ts` | ✅ 완성 | |
-| `frontend/src/components/Chat/ChatPanel.tsx` | ⚠️ 구 타입 잔재 | `msg.queryResponse` 참조 |
-| `frontend/src/components/Chat/MessageBubble.tsx` | ✅ 완성 | |
-| `frontend/src/components/Chat/QueryInput.tsx` | ✅ 완성 | |
-| `frontend/src/components/Results/ResultsPanel.tsx` | ✅ 완성 | |
-| `frontend/src/components/Results/SqlBlock.tsx` | ✅ 완성 | |
-| `frontend/src/components/Results/ResultTable.tsx` | ✅ 완성 | |
-| `frontend/src/components/Results/ChartPanel.tsx` | ✅ 완성 | |
-| `frontend/src/components/Schema/SchemaGraph.tsx` | ✅ 완성 | SSR 비활성 래퍼 |
-| `frontend/src/components/Schema/SchemaGraphInner.tsx` | ✅ 완성 | ReactFlow + Dagre |
-| `frontend/src/App.tsx` | ❌ 불필요 | Next.js 이전 후 잔존, 삭제 대상 |
-| `Dockerfile` | ✅ 완성 | |
-| `docker-compose.yml` | ✅ 완성 | |
-| `.env.example` | ✅ 완성 | |
-| `README.md` | ✅ 완성 | |
+- **드라이버**: pyodbc (ODBC Driver 자동 감지: 18 → 17 → Native Client → SQL Server)
+- **풀**: `PyodbcPool` — `queue.Queue`, max_size=5, `SELECT 1` 유효성 검증
+- **비동기**: `asyncio.run_in_executor`로 동기 pyodbc 래핑
+- **읽기 전용 차단 키워드**: INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, EXEC, MERGE, REPLACE, CALL, GRANT, REVOKE, COMMIT, ROLLBACK
+
+---
+
+## 9. 프론트엔드 상태 관리
+
+### 9.1 `useAgentStream` (메모리 + useReducer)
+```
+State: {messages, sessionId, isStreaming, error, pendingContinue, results, activeResultId}
+Actions: send, cancel, reset, respondToContinue, setActiveResult, loadMessages
+```
+
+### 9.2 `useConversationStore` (localStorage)
+```
+Conversation: {id, title, domain, domainLabel, messages, createdAt, updatedAt}
+Actions: saveConversation, deleteConversation, renameConversation, downloadMarkdown, clearAll
+Storage key: "llm-harness-conversations"
+```
+- 제목 자동 생성: 첫 user 메시지 40자
+- Markdown export: `<think>` 제거 후 "👤/🤖" 구조로 변환
+
+### 9.3 세션 유지
+- `App.tsx`가 모든 페이지를 **CSS `hidden`으로만 숨김** (DOM 유지)
+- 탭 전환 시 훅 상태/EventSource 유지
+- 대화는 localStorage 자동 저장 → 브라우저 재시작에도 복원
+
+---
+
+## 10. 백엔드 세션 저장소 (메모리)
+
+| 저장소 | 키 | 내용 | 수명 |
+|--------|-----|------|------|
+| `_sessions` | stream_key | SSE 이벤트 버퍼 | 쿼리 단위 |
+| `_conversations` | session_id | 대화 메시지 히스토리 | 세션 단위 |
+| `_continue_gates` | stream_key | `asyncio.Event` | 승인까지 |
+| `_continue_results` | stream_key | bool | 일회성 |
+
+- stream_key 포맷: `{session_id}:{8자 hex}`
+- MAX_CONVERSATION_HISTORY: 20
+
+---
+
+## 11. 환경변수
+
+```bash
+# LLM
+LLM_PROVIDER=claude               # claude | lm_studio
+ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-sonnet-4-6
+
+# LM Studio (옵션)
+LM_STUDIO_BASE_URL=http://localhost:1234/v1
+LM_STUDIO_API_KEY=lm-studio
+LM_STUDIO_MODEL=                  # 비워두면 로드된 모델 자동 사용
+
+# MSSQL
+MSSQL_SERVER=host,port
+MSSQL_DATABASE=dbname
+MSSQL_USER=user
+MSSQL_PASSWORD=pass
+# 또는:
+# MSSQL_CONNECTION_STRING=DRIVER=...;SERVER=...;...
+
+# 에이전트
+AGENT_MAX_TURNS=10
+MAX_CONVERSATION_HISTORY=20
+```
+
+---
+
+## 12. 실행
+
+```powershell
+# 백엔드
+cd backend
+uv sync
+uv run python main.py              # 0.0.0.0:8000
+
+# 프론트엔드 (별도 터미널)
+cd frontend
+pnpm install
+pnpm dev                           # localhost:5173
+```
+
+---
+
+## 13. 스킬 시스템 (.claude/skills/)
+
+Claude Code 세션 자동 로드. **런타임 백엔드와 분리**.
+
+| 스킬 | 역할 |
+|------|------|
+| `LosszeroDB_3Z_MES` | MES DB 멀티채널(DB0/DB1/DB2) + meta.py + Query.py |
+| `LosszeroDB_GW` | GW DB 메타 (TXP_TableInfo/TXP_ColumnInfo 기반) |
+
+**워크플로우**: 스킬 meta.py로 DB 탐색 → 도메인 JSON 수동 작성 → `schema_registry/domains/` 배치.
+
+---
+
+## 14. 구현 이력 요약
+
+| Phase | 핵심 변화 |
+|-------|----------|
+| 1 | Text-to-SQL + Next.js (폐기됨) |
+| 2 | LLM Harness 전환 (AgentLoop + SSE + Vite) |
+| 3 | HITL 승인 시스템 도입 후 제거, continue_prompt 재도입 |
+| 4 | schema_registry 통합 + 구조 일원화 + `/api/domains` |
+| 5 | 대화 관리(localStorage), tool_result 인라인 차트, UI Builder 스캐폴딩 |
+
+상세한 미이행 항목은 [ROADMAP.md](./ROADMAP.md) 참조.
