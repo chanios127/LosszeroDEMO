@@ -1,10 +1,18 @@
 # LLM Harness — 미이행 로드맵
 
-> 최종 갱신: 2026-04-17 (Phase 6 종료 시점)
+> 최종 갱신: 2026-04-28 (Phase 6.5 종료 시점)
 
-현재 SPEC.md에 정의된 기능은 Phase 6까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+현재 SPEC.md에 정의된 기능은 Phase 6.5까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
 
-## ✅ Phase 6에서 처리됨 (이전 ROADMAP의 일부)
+## ✅ Phase 6.5에서 처리됨 (협업 인프라)
+
+- **`HANDOFF.md` 정착** — supervisor 세션 cold start용 인수인계 프롬프트 (이전 `partitioned-marinating-cook.md` 정착)
+- **`agent-prompts/` 디렉토리** — 5역할(BackEnd Infra / DB Domain Manager / Front/View / Claude Design / Debug) 표준 cold-start 프롬프트 + README
+- **per-agent feature 브랜치 전략** — `agent/<role>` 명명, 세션 자율 분기, supervisor 머지 검수 게이트
+- **Debug 정책 확정** — A+C 혼합. 옵션 1 블랙리스트 가드레일 (11종 트리거 + 안전장치 2개: 회귀 명세 필수 / 모호 시 자동 A 경유)
+- **Claude Design 재주입 패키지 규격** — `design-export/` 고정 출력, `DELTA.md` + `SNAPSHOT.md` 매 사이클 자동 생성, 주입 전략 자동 판단 4종
+
+## ✅ Phase 6에서 처리됨
 
 - **프론트엔드 design/framework 분리** — UI primitives와 비즈니스 로직 분리
 - **디자인 토큰 시스템** — OKLCH 컬러, density 변수, TweaksPanel

@@ -95,10 +95,19 @@ LosszeroDEMO/
 │   └── LosszeroDB_GW/                   # GW DB
 │
 ├── README.md                            # 빠른 시작
+├── HANDOFF.md                           # supervisor 인수인계 프롬프트 (세션 cold start)
 ├── ARCHITECTURE.md                      # 상세 아키텍처
 ├── SPEC.md                              # ← 이 문서 (시스템 명세)
 ├── ROADMAP.md                           # 미이행 로드맵
-├── DESIGN.md / DESIGN-phase*.md         # 과거 설계 기록
+├── agent-prompts/                       # 에이전트 위임 표준 프롬프트 (Phase 6.5)
+│   ├── README.md                        # 위임 워크플로우 + per-agent 브랜치 규칙
+│   ├── backend-infra.md                 # FastAPI / LLM / AgentLoop / tools / DB
+│   ├── db-domain.md                     # schema_registry/domains + 매칭/서빙
+│   ├── front-view.md                    # React framework/ 영역
+│   ├── claude-design.md                 # 외부 Claude Design 위임 절차 + design-export/ 규격
+│   └── debug.md                         # A+C 가드레일 본문 (옵션 1 블랙리스트 11종 트리거)
+├── design-export/                       # Claude Design 위임 시 자동 생성 (gitignore 권장)
+├── DESIGN.md / DESIGN-phase*.md         # 과거 설계 기록 (legacy)
 └── .env.example
 ```
 
@@ -420,5 +429,6 @@ Claude Code 세션 자동 로드. **런타임 백엔드와 분리**.
 | 4 | schema_registry 통합 + 구조 일원화 + `/api/domains` |
 | 5 | 대화 관리(localStorage), tool_result 인라인 차트, UI Builder 스캐폴딩 |
 | 6 | design/framework 분리, tools 패키지화, prompts 외부화, Harmony 정규화, 디자인 토큰(OKLCH/density/팔레트), 스트림 재연결 |
+| 6.5 | 협업 인프라 정착: `HANDOFF.md`, `agent-prompts/` (5역할 + README), per-agent feature 브랜치 전략(`agent/<role>`), Debug A+C 가드레일(옵션 1 블랙리스트 11종 트리거 + 안전장치 2개), Claude Design 재주입 패키지 규격(`design-export/`) |
 
 상세한 미이행 항목은 [ROADMAP.md](./ROADMAP.md) 참조.
