@@ -107,6 +107,20 @@ class AgentLoop:
         turn = 0
         turn_limit = self.max_turns
 
+        # Observability: one-shot snapshot of what we're sending into the loop
+        system_total_len = sum(
+            len(m.get("content", "")) for m in messages if m.get("role") == "system"
+        )
+        non_system = [m for m in messages if m.get("role") != "system"]
+        logger.info(
+            "AgentLoop start: messages=%d (system=%d, other=%d) system_total_len=%d tools=%d",
+            len(messages),
+            len(messages) - len(non_system),
+            len(non_system),
+            system_total_len,
+            len(tool_schemas),
+        )
+
         while turn < turn_limit:
             turn += 1
             pending_tool_call: ToolCall | None = None
@@ -138,8 +152,16 @@ class AgentLoop:
                 viz_hint: VizHint = (
                     _infer_viz_hint(last_data) if last_data else "table"
                 )
+                answer = full_text or " ".join(answer_parts)
+                if not answer.strip():
+                    logger.warning(
+                        "AgentLoop: empty LLM response on turn %d (no text, no tool_call). "
+                        "system_total_len=%d messages=%d tools=%d",
+                        turn, system_total_len, len(messages), len(tool_schemas),
+                    )
+                    answer = "(LLM returned empty response)"
                 yield FinalEvent(
-                    answer=full_text or " ".join(answer_parts),
+                    answer=answer,
                     viz_hint=viz_hint,
                     data=last_data,
                 )
@@ -202,8 +224,16 @@ class AgentLoop:
 
         # Loop ended — return whatever we have
         viz_hint_final: VizHint = _infer_viz_hint(last_data) if last_data else "table"
+        fallback_answer = " ".join(answer_parts).strip()
+        if not fallback_answer:
+            logger.warning(
+                "AgentLoop: loop ended with empty answer after %d turns "
+                "(hit turn_limit=%d with no final text).",
+                turn, turn_limit,
+            )
+            fallback_answer = "(완료 — 텍스트 응답 없음)"
         yield FinalEvent(
-            answer=" ".join(answer_parts) or "(완료)",
+            answer=fallback_answer,
             viz_hint=viz_hint_final,
             data=last_data,
         )

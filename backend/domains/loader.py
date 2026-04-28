@@ -218,11 +218,22 @@ def domain_to_context(domain: DomainSpec) -> str:
                 if len(cols) > len(show):
                     lines.append(f"| ... | | ({len(cols) - len(show)} more columns) |")
 
+            joins = t.get("joins", [])
+            if joins:
+                lines.append("Joins:")
+                for j in joins:
+                    target = j.get("target", "")
+                    on = j.get("on", "")
+                    desc = j.get("description", "")
+                    lines.append(f"- → {target} ON `{on}`" + (f" — {desc}" if desc else ""))
+
     lines.append("")
     lines.append(
         "Use ONLY the tables and stored procedures listed above. "
         "Use `list_tables` tool ONLY if you need tables not listed here. "
-        "After getting table/column info, ALWAYS proceed to query actual data with `db_query` or `sp_call`."
+        "After getting table/column info, ALWAYS proceed to query actual data with `db_query` or `sp_call`. "
+        "When a query returns user IDs or customer codes, JOIN the master tables (LZXP310T for users, TCD_Customer for customers) "
+        "to include the human-readable name alongside the code."
     )
     return "\n".join(lines)
 

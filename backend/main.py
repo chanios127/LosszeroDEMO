@@ -20,7 +20,7 @@ _root_env = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_root_env, override=True)
 load_dotenv()
 
-from agent.events import AgentEvent, EventType
+from agent.events import AgentEvent, ErrorEvent, EventType
 from agent.loop import AgentLoop
 from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
@@ -44,6 +44,38 @@ _sessions: dict[str, list[AgentEvent]] = {}
 _conversations: dict[str, list[Message]] = {}
 _continue_gates: dict[str, asyncio.Event] = {}
 _continue_results: dict[str, bool] = {}
+_run_tasks: dict[str, asyncio.Task] = {}
+
+
+# ---------------------------------------------------------------------------
+# Thinking-block markers — extended to recognize multiple model formats
+# ---------------------------------------------------------------------------
+# Different reasoning models emit different open/close markers around their
+# chain-of-thought. We recognize the common ones and treat them all as the
+# same hidden "think" region in the terminal log.
+THINK_START_MARKERS: tuple[str, ...] = (
+    "<think>",
+    "<|channel|>thought",
+    "<|channel|>analysis",
+    "<|channel>thought",
+    "<|channel>analysis",
+)
+THINK_END_MARKERS: tuple[str, ...] = (
+    "</think>",
+    "<|channel|>final",
+    "<|channel>final",
+    "<|end|>",
+)
+
+
+def _find_earliest(buf: str, markers: tuple[str, ...]) -> tuple[int, str]:
+    """Return (idx, marker) of the earliest-occurring marker, or (-1, '')."""
+    best_idx, best_marker = -1, ""
+    for m in markers:
+        idx = buf.find(m)
+        if idx != -1 and (best_idx == -1 or idx < best_idx):
+            best_idx, best_marker = idx, m
+    return best_idx, best_marker
 
 
 @asynccontextmanager
@@ -284,6 +316,11 @@ async def start_query(body: QueryRequest):
     if matched:
         logger.info("Domain matched: %s for query: %s", matched.get("domain"), body.query[:50])
 
+    # Append user message to conversation history IMMEDIATELY so that
+    # (a) concurrent/quickly-fired follow-ups see it and
+    # (b) task crashes don't desync history.
+    _conversations[session_id].append({"role": "user", "content": body.query})
+
     async def _run():
         llm = get_provider()
         tools = [ListTablesTool(), DBQueryTool(), SPCallTool()]
@@ -322,99 +359,149 @@ async def start_query(body: QueryRequest):
         # ─────────────────────────────────────────────────────────
 
         final_answer = ""
-        async for event in loop.run(body.query, history=history):
-            _sessions[stream_key].append(event)
+        run_error: str | None = None
+        try:
+            async for event in loop.run(body.query, history=history):
+                _sessions[stream_key].append(event)
 
-            # ── 터미널 출력 ───────────────────────────────────────
-            if event.type == EventType.TOOL_START:
-                # think 중이었으면 줄바꿈 정리
-                if _in_think or _ans_started:
-                    print(flush=True)
-                    _in_think = False
-                    _ans_started = False
-                args = json.dumps(event.input, ensure_ascii=False)
-                print(f"🔧 [T{event.turn}] {event.tool}({args})", flush=True)
+                # ── 터미널 출력 ───────────────────────────────────────
+                if event.type == EventType.TOOL_START:
+                    # think 중이었으면 줄바꿈 정리
+                    if _in_think or _ans_started:
+                        print(flush=True)
+                        _in_think = False
+                        _ans_started = False
+                    args = json.dumps(event.input, ensure_ascii=False)
+                    print(f"🔧 [T{event.turn}] {event.tool}({args})", flush=True)
 
-            elif event.type == EventType.TOOL_RESULT:
-                if event.error:
-                    print(f"   ❌ {event.error}", flush=True)
-                elif event.rows is not None:
-                    print(f"   → {event.rows} rows", flush=True)
-                else:
-                    snippet = str(event.output)[:200].replace("\n", " ")
-                    if len(str(event.output)) > 200:
-                        snippet += "..."
-                    print(f"   → {snippet}", flush=True)
+                elif event.type == EventType.TOOL_RESULT:
+                    if event.error:
+                        print(f"   ❌ {event.error}", flush=True)
+                    elif event.rows is not None:
+                        print(f"   → {event.rows} rows", flush=True)
+                    else:
+                        snippet = str(event.output)[:200].replace("\n", " ")
+                        if len(str(event.output)) > 200:
+                            snippet += "..."
+                        print(f"   → {snippet}", flush=True)
 
-            elif event.type == EventType.LLM_CHUNK:
-                _buf += event.delta
-                # <think>/<\/think> 감지하며 안전 구간 출력
-                while True:
-                    if not _in_think:
-                        ti = _buf.find("<think>")
-                        if ti == -1:
-                            safe = _buf.rfind("<") if "<" in _buf else len(_buf)
-                            if safe > 0:
-                                text = _buf[:safe]
-                                if text:
+                elif event.type == EventType.LLM_CHUNK:
+                    _buf += event.delta
+                    # think 블록 마커 감지 (<think> 외에 Harmony-style 마커 포함)
+                    # 안전 구간(마지막 '<' 이전)까지만 출력하여 partial-tag 보호.
+                    while True:
+                        if not _in_think:
+                            ti, start_marker = _find_earliest(_buf, THINK_START_MARKERS)
+                            if ti == -1:
+                                safe = _buf.rfind("<") if "<" in _buf else len(_buf)
+                                if safe > 0:
+                                    text = _buf[:safe]
+                                    if text:
+                                        if not _ans_started:
+                                            print("💬 ", end="", flush=True)
+                                            _ans_started = True
+                                        print(text, end="", flush=True)
+                                    _buf = _buf[safe:]
+                                break
+                            else:
+                                if ti > 0:
+                                    before = _buf[:ti]
                                     if not _ans_started:
                                         print("💬 ", end="", flush=True)
                                         _ans_started = True
-                                    print(text, end="", flush=True)
-                                _buf = _buf[safe:]
-                            break
+                                    print(before, end="", flush=True)
+                                print("\n🧠 [THINK] ", end="", flush=True)
+                                _in_think = True
+                                _ans_started = False
+                                _buf = _buf[ti + len(start_marker):]
                         else:
-                            if ti > 0:
-                                before = _buf[:ti]
-                                if not _ans_started:
-                                    print("💬 ", end="", flush=True)
-                                    _ans_started = True
-                                print(before, end="", flush=True)
-                            print("\n🧠 [THINK] ", end="", flush=True)
-                            _in_think = True
-                            _ans_started = False
-                            _buf = _buf[ti + len("<think>"):]
-                    else:
-                        ci = _buf.find("</think>")
-                        if ci == -1:
-                            safe = _buf.rfind("<") if "<" in _buf else len(_buf)
-                            if safe > 0:
-                                print(_buf[:safe], end="", flush=True)
-                                _buf = _buf[safe:]
-                            break
-                        else:
-                            print(_buf[:ci], end="", flush=True)
-                            print()
-                            _in_think = False
-                            _buf = _buf[ci + len("</think>"):]
+                            ci, end_marker = _find_earliest(_buf, THINK_END_MARKERS)
+                            if ci == -1:
+                                safe = _buf.rfind("<") if "<" in _buf else len(_buf)
+                                if safe > 0:
+                                    print(_buf[:safe], end="", flush=True)
+                                    _buf = _buf[safe:]
+                                break
+                            else:
+                                print(_buf[:ci], end="", flush=True)
+                                print()
+                                _in_think = False
+                                _buf = _buf[ci + len(end_marker):]
 
-            elif event.type == EventType.FINAL:
-                # 버퍼 잔여분 출력
-                if _buf:
-                    if not _ans_started and not _in_think:
-                        print("💬 ", end="", flush=True)
-                    print(_buf, end="", flush=True)
-                print()
-                print("═" * W, flush=True)
-                final_answer = event.answer
-                break
+                elif event.type == EventType.FINAL:
+                    # 버퍼 잔여분 출력
+                    if _buf:
+                        if not _ans_started and not _in_think:
+                            print("💬 ", end="", flush=True)
+                        print(_buf, end="", flush=True)
+                    print()
+                    print("═" * W, flush=True)
+                    final_answer = event.answer
+                    break
 
-            elif event.type == EventType.CONTINUE_PROMPT:
-                print(f"\n⏸️  {event.message}", flush=True)
+                elif event.type == EventType.CONTINUE_PROMPT:
+                    print(f"\n⏸️  {event.message}", flush=True)
 
-            elif event.type == EventType.ERROR:
-                if _buf:
-                    print(_buf, end="", flush=True)
-                print(f"\n❌ ERROR: {event.message}", flush=True)
-                print("═" * W, flush=True)
-                break
-            # ─────────────────────────────────────────────────────
-
-        _conversations[session_id].append({"role": "user", "content": body.query})
-        if final_answer:
+                elif event.type == EventType.ERROR:
+                    if _buf:
+                        print(_buf, end="", flush=True)
+                    print(f"\n❌ ERROR: {event.message}", flush=True)
+                    print("═" * W, flush=True)
+                    run_error = event.message
+                    break
+                # ─────────────────────────────────────────────────────
+        except asyncio.CancelledError:
+            logger.info("Agent task cancelled: stream=%s", stream_key)
+            # SSE event_generator가 종료되도록 ERROR 이벤트 주입
+            _sessions[stream_key].append(
+                ErrorEvent(message="Cancelled by user")
+            )
+            # continue_prompt 대기 중이면 풀어주기 (task가 정상 cleanup하도록)
+            gate = _continue_gates.pop(stream_key, None)
+            if gate is not None:
+                gate.set()
+            print(f"\n⛔ Cancelled by user", flush=True)
+            print("═" * W, flush=True)
+            run_error = "Cancelled by user"
+            raise  # task가 cancelled 상태로 정리되도록 재발생
+        except Exception as e:
+            logger.exception("AgentLoop crashed for session %s: %s", session_id, e)
+            run_error = str(e)
+            # CRITICAL: append ErrorEvent so SSE event_generator has a terminator.
+            # Without this the stream buffer never reaches FINAL/ERROR and the
+            # frontend's EventSource hangs indefinitely showing "처리 중...".
+            _sessions[stream_key].append(
+                ErrorEvent(message=f"Agent loop error: {run_error[:200]}")
+            )
+            # Release any pending continue gate so cleanup completes.
+            gate = _continue_gates.pop(stream_key, None)
+            if gate is not None:
+                gate.set()
+            print(f"\n❌ ERROR: {run_error}", flush=True)
+            print("═" * W, flush=True)
+        finally:
+            # Always pair user message (appended before task) with an assistant
+            # turn — even empty/errored — so history stays balanced for
+            # subsequent turns. If omitted the next /api/query would see
+            # history ending with unpaired user msg and context would desync.
+            if not final_answer:
+                if run_error:
+                    final_answer = f"(error: {run_error[:200]})"
+                    logger.warning(
+                        "Session %s: replacing final_answer with error placeholder for query %r",
+                        session_id, body.query[:80],
+                    )
+                else:
+                    final_answer = "(empty response)"
+                    logger.warning(
+                        "Session %s: empty final_answer for query %r — storing placeholder",
+                        session_id, body.query[:80],
+                    )
             _conversations[session_id].append({"role": "assistant", "content": final_answer})
 
-    asyncio.create_task(_run())
+    task = asyncio.create_task(_run())
+    _run_tasks[stream_key] = task
+    task.add_done_callback(lambda t: _run_tasks.pop(stream_key, None))
     return QueryResponse(session_id=session_id, status=stream_key)
 
 
@@ -456,6 +543,50 @@ async def continue_agent(stream_key: str, body: ContinueRequest):
     _continue_results[stream_key] = body.proceed
     gate.set()
     return {"continued": body.proceed}
+
+
+@app.get("/api/stream_status/{stream_key}")
+async def stream_status(stream_key: str):
+    """Lightweight check of whether a stream is still meaningfully connectable.
+
+    Used by the frontend on conversation re-entry to decide whether to
+    reconnect or to mark a stale streaming message as errored.
+    """
+    events = _sessions.get(stream_key)
+    if events is None:
+        return {
+            "exists": False,
+            "completed": False,
+            "last_event_type": None,
+            "event_count": 0,
+        }
+    last_type = events[-1].type.value if events else None
+    completed = last_type in ("final", "error")
+    return {
+        "exists": True,
+        "completed": completed,
+        "last_event_type": last_type,
+        "event_count": len(events),
+    }
+
+
+@app.post("/api/cancel/{session_id}")
+async def cancel_session(session_id: str):
+    """Cancel any in-flight agent task(s) for this session.
+
+    Propagates asyncio.CancelledError into the agent loop, which closes the
+    LLM stream connection (httpx / anthropic SDK async context managers),
+    causing the LLM server to stop generating tokens.
+    """
+    cancelled: list[str] = []
+    for stream_key in list(_run_tasks.keys()):
+        if stream_key.startswith(f"{session_id}:"):
+            task = _run_tasks.get(stream_key)
+            if task and not task.done():
+                task.cancel()
+                cancelled.append(stream_key)
+    logger.info("Cancel requested for session %s: %d task(s)", session_id, len(cancelled))
+    return {"cancelled": cancelled, "count": len(cancelled)}
 
 
 @app.delete("/api/session/{session_id}")
