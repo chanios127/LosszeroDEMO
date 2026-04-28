@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
 from domains.loader import MODULE_DOMAIN_MAP, parse_table_name
 from llm.base import ToolSchema
 from tools.base import Tool
+
+_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
 
 
 class ListTablesTool(Tool):
@@ -17,11 +20,7 @@ class ListTablesTool(Tool):
 
     @property
     def description(self) -> str:
-        return (
-            "List table names from the database, optionally filtered by pattern. "
-            "Returns table names with their domain classification. "
-            "Use this to discover available tables before writing queries."
-        )
+        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {
@@ -33,11 +32,10 @@ class ListTablesTool(Tool):
                     "pattern": {
                         "type": "string",
                         "description": (
-                            "SQL LIKE pattern for table names. "
-                            "Examples: 'WPM_%' (생산 tables), 'WQC_%' (품질), "
-                            "'%Order%' (주문 관련). Default: 'W%' (all W-prefix tables)."
+                            "Optional SQL LIKE pattern for table names. "
+                            "Examples: '%Order%' (name contains 'Order'), 'TGW_%' (specific prefix). "
+                            "Omit to list all tables."
                         ),
-                        "default": "W%",
                     },
                     "include_columns": {
                         "type": "boolean",
@@ -49,7 +47,7 @@ class ListTablesTool(Tool):
         }
 
     async def execute(self, input: dict[str, Any]) -> list[dict]:
-        pattern = input.get("pattern", "W%")
+        pattern = input.get("pattern", "%")
         include_columns = input.get("include_columns", False)
 
         async with get_connection() as conn:

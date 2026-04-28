@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
@@ -15,6 +16,8 @@ _BLOCKED = re.compile(
     r"MERGE|REPLACE|CALL|GRANT|REVOKE|COMMIT|ROLLBACK)\b",
     re.IGNORECASE,
 )
+
+_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
 
 
 def _assert_read_only(sql: str) -> None:
@@ -33,11 +36,7 @@ class DBQueryTool(Tool):
 
     @property
     def description(self) -> str:
-        return (
-            "Execute a read-only SELECT query against the MSSQL ERP database. "
-            "Returns rows as a list of dicts. Only SELECT is allowed — "
-            "any DML/DDL will be rejected."
-        )
+        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
@@ -12,6 +13,8 @@ from tools.base import Tool
 
 logger = logging.getLogger(__name__)
 
+_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
+
 
 class SPCallTool(Tool):
     @property
@@ -20,11 +23,7 @@ class SPCallTool(Tool):
 
     @property
     def description(self) -> str:
-        return (
-            "Execute a whitelisted MSSQL stored procedure with named parameters. "
-            "Only procedures registered in sp_whitelist.json are allowed. "
-            "Returns result rows as a list of dicts."
-        )
+        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {
@@ -35,7 +34,7 @@ class SPCallTool(Tool):
                 "properties": {
                     "sp_name": {
                         "type": "string",
-                        "description": "Exact stored procedure name from the whitelist.",
+                        "description": "Exact stored procedure name as declared in the domain schema.",
                     },
                     "params": {
                         "type": "object",
@@ -54,7 +53,7 @@ class SPCallTool(Tool):
         if not is_sp_whitelisted(sp_name):
             allowed = get_all_whitelisted_sp_names()
             raise ValueError(
-                f"'{sp_name}' is not in sp_whitelist.json. "
+                f"'{sp_name}' is not registered in any loaded domain's stored_procedures. "
                 f"Allowed: {sorted(allowed) if allowed else '(none registered)'}"
             )
 

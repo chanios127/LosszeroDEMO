@@ -4,7 +4,17 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, AsyncGenerator, TypedDict
+
+
+@lru_cache(maxsize=1)
+def load_base_system_prompt() -> str:
+    """Load the project-wide base system prompt from backend/prompts/system_base.md."""
+    # backend/llm/base.py -> backend/prompts/system_base.md
+    path = Path(__file__).resolve().parent.parent / "prompts" / "system_base.md"
+    return path.read_text(encoding="utf-8").strip()
 
 
 # ---------------------------------------------------------------------------
