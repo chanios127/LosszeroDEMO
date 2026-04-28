@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { useConversationStore } from "../hooks/useConversationStore";
-import ChatInput from "../components/ChatInput";
-import MessageThread from "../components/MessageThread";
-import ConversationList from "../components/ConversationList";
+import ChatInput from "../../design/components/ChatInput";
+import MessageThread from "../../design/components/MessageThread";
+import ConversationList from "../../design/components/ConversationList";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -39,18 +39,18 @@ function DomainCard({
   const style = DOMAIN_STYLE[domain.domain] ?? DEFAULT_STYLE;
   return (
     <div
-      className={`flex flex-col rounded-xl border border-slate-800 bg-gradient-to-br ${style.color}
-        p-5 transition-all hover:border-slate-700 cursor-pointer group`}
+      className={`flex flex-col rounded-xl border border-border-subtle bg-gradient-to-br ${style.color}
+        p-5 transition-all hover:border-border cursor-pointer group`}
       onClick={() => onSelect(domain)}
     >
       <div className="mb-3 text-3xl">{style.icon}</div>
-      <h3 className="mb-1 font-semibold text-slate-100">{domain.display_name}</h3>
-      <p className="mb-3 text-sm text-slate-400">
+      <h3 className="mb-1 font-semibold text-text-strong">{domain.display_name}</h3>
+      <p className="mb-3 text-sm text-text-muted">
         {domain.table_count} tables{domain.sp_count > 0 && `, ${domain.sp_count} SPs`}
       </p>
       <div className="flex flex-wrap gap-1.5">
         {domain.table_groups.map((g) => (
-          <span key={g} className="rounded bg-slate-800/80 px-2 py-0.5 text-[10px] text-slate-500">
+          <span key={g} className="rounded bg-bg-elev-2 px-2 py-0.5 text-[10px] text-text-dim">
             {g}
           </span>
         ))}
@@ -65,12 +65,18 @@ function DomainCard({
 function AgentChat({
   domain,
   onBack,
+  pendingQuery,
+  onClearPendingQuery,
 }: {
   domain: DomainInfo;
   onBack: () => void;
+  pendingQuery?: string | null;
+  onClearPendingQuery?: () => void;
 }) {
   const {
     messages,
+    sessionId,
+    streamKey,
     isStreaming,
     error,
     pendingContinue,
@@ -95,28 +101,88 @@ function AgentChat({
   const [currentConvId, setCurrentConvId] = useState<string>(() => crypto.randomUUID());
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Auto-save conversation on message change (only for current domain)
-  const lastSavedLen = useRef(0);
+  // Consume pendingQuery from Dashboard QuickAsk
+  // Use ref to guard against React StrictMode double-mount re-firing
+  const consumedPendingRef = useRef<string | null>(null);
   useEffect(() => {
-    // Save only when messages actually change (not during streaming-in-progress updates to existing messages)
+    const q = pendingQuery?.trim();
+    if (q && consumedPendingRef.current !== q && !isStreaming) {
+      consumedPendingRef.current = q;
+      send(q);
+      onClearPendingQuery?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingQuery]);
+
+  // Auto-save conversation on message/session/stream change.
+  // We persist sessionId/streamKey alongside messages so a mid-stream navigation
+  // away can be resumed on return. The skip-during-streaming optimization only
+  // skips on pure delta updates (messages reference changes but length, sessionId,
+  // and streamKey all stay the same). Otherwise APPEND_DELTA would write the
+  // localStorage on every chunk — too noisy.
+  const lastSavedLen = useRef(0);
+  const lastSavedSessionId = useRef<string | null>(null);
+  const lastSavedStreamKey = useRef<string | null>(null);
+  useEffect(() => {
     if (messages.length === 0) return;
-    if (messages.length === lastSavedLen.current && isStreaming) return;
+
+    const lengthChanged = messages.length !== lastSavedLen.current;
+    const sessionChanged = (sessionId ?? null) !== lastSavedSessionId.current;
+    const streamChanged = (streamKey ?? null) !== lastSavedStreamKey.current;
+
+    // Skip ONLY when streaming AND nothing structural changed (i.e. pure delta).
+    // When sessionId/streamKey first arrive (after fetch returns) we MUST save
+    // even mid-stream so a return-visit can reconnect via streamKey.
+    if (isStreaming && !lengthChanged && !sessionChanged && !streamChanged) {
+      return;
+    }
+
     lastSavedLen.current = messages.length;
-    saveConversation(currentConvId, domain.domain, domain.display_name, messages);
-  }, [messages, isStreaming, currentConvId, domain.domain, domain.display_name, saveConversation]);
+    lastSavedSessionId.current = sessionId ?? null;
+    lastSavedStreamKey.current = streamKey ?? null;
+    saveConversation(
+      currentConvId,
+      domain.domain,
+      domain.display_name,
+      messages,
+      sessionId ?? undefined,
+      streamKey ?? undefined,
+    );
+  }, [
+    messages,
+    isStreaming,
+    sessionId,
+    streamKey,
+    currentConvId,
+    domain.domain,
+    domain.display_name,
+    saveConversation,
+  ]);
 
   const handleSelect = (id: string) => {
     const conv = conversations.find((c) => c.id === id);
     if (!conv) return;
     setCurrentConvId(id);
+    // Sync save-tracking refs to the loaded conversation so the post-load
+    // autosave doesn't immediately re-write identical state.
     lastSavedLen.current = conv.messages.length;
-    loadMessages(conv.messages);
+    lastSavedSessionId.current = conv.sessionId ?? null;
+    lastSavedStreamKey.current = conv.streamKey ?? null;
+    // Pass stored sessionId/streamKey so loadMessages can reconnect SSE
+    // if the conversation was mid-stream when we left.
+    loadMessages(
+      conv.messages,
+      conv.sessionId ?? null,
+      conv.streamKey ?? null,
+    );
   };
 
   const handleNew = () => {
     const newId = crypto.randomUUID();
     setCurrentConvId(newId);
     lastSavedLen.current = 0;
+    lastSavedSessionId.current = null;
+    lastSavedStreamKey.current = null;
     reset();
   };
 
@@ -152,30 +218,30 @@ function AgentChat({
       {/* Right: Chat area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-800 px-4 py-2 shrink-0">
+        <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2 shrink-0">
           <button
             onClick={() => setSidebarOpen((v) => !v)}
-            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            className="rounded p-1 text-text-muted hover:bg-bg-elev-2 hover:text-text-strong"
             title={sidebarOpen ? "사이드바 접기" : "사이드바 펼치기"}
           >
             {sidebarOpen ? "◀" : "▶"}
           </button>
           <button
             onClick={onBack}
-            className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            className="rounded px-2 py-1 text-xs text-text-muted hover:bg-bg-elev-2 hover:text-text-strong"
           >
             ← 도메인 선택
           </button>
-          <div className="h-4 w-px bg-slate-800" />
+          <div className="h-4 w-px bg-bg-elev-2" />
           <span className="text-sm">{style.icon}</span>
-          <span className="text-sm font-medium text-slate-200">
+          <span className="text-sm font-medium text-text-strong">
             {domain.display_name}
           </span>
           <div className="ml-auto flex items-center gap-2">
             {isStreaming && (
               <button
                 onClick={cancel}
-                className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-400 hover:bg-red-500/30"
+                className="rounded bg-[color:color-mix(in_oklch,var(--danger)_20%,transparent)] px-3 py-1 text-xs text-danger hover:bg-[color:color-mix(in_oklch,var(--danger)_30%,transparent)]"
               >
                 취소
               </button>
@@ -189,10 +255,10 @@ function AgentChat({
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="text-4xl mb-3">{style.icon}</div>
-                <h2 className="text-lg font-semibold text-slate-300">
+                <h2 className="text-lg font-semibold text-text-base">
                   {domain.display_name} 에이전트
                 </h2>
-                <p className="mt-1 mb-6 max-w-sm text-sm text-slate-500">
+                <p className="mt-1 mb-6 max-w-sm text-sm text-text-dim">
                   자연어로 질문하면 데이터를 조회하고 차트로 시각화합니다.
                 </p>
                 <div className="flex flex-col gap-2 w-full max-w-sm">
@@ -200,8 +266,8 @@ function AgentChat({
                     <button
                       key={q}
                       onClick={() => send(q)}
-                      className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-left
-                        text-slate-400 hover:border-brand-500 hover:text-brand-500 hover:bg-brand-500/5"
+                      className="rounded-lg border border-border px-4 py-2.5 text-sm text-left
+                        text-text-muted hover:border-brand-500 hover:text-brand-500 hover:bg-[color:color-mix(in_oklch,var(--brand-500)_5%,transparent)]"
                     >
                       {q}
                     </button>
@@ -219,13 +285,13 @@ function AgentChat({
                   <div className="flex gap-2">
                     <button
                       onClick={() => respondToContinue(pendingContinue.streamKey, true)}
-                      className="rounded bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-500"
+                      className="rounded bg-success px-4 py-1.5 text-sm font-medium text-white hover:bg-success"
                     >
                       계속
                     </button>
                     <button
                       onClick={() => respondToContinue(pendingContinue.streamKey, false)}
-                      className="rounded bg-slate-700 px-4 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-600"
+                      className="rounded bg-bg-elev-3 px-4 py-1.5 text-sm font-medium text-text-base hover:bg-bg-elev-3"
                     >
                       중단
                     </button>
@@ -235,7 +301,7 @@ function AgentChat({
             )}
 
             {error && (
-              <div className="mt-4 rounded-lg border border-red-800/50 bg-red-900/20 p-4 text-sm text-red-400">
+              <div className="mt-4 rounded-lg border border-[color:color-mix(in_oklch,var(--danger)_30%,transparent)] bg-[color:color-mix(in_oklch,var(--danger)_15%,transparent)] p-4 text-sm text-danger">
                 {error}
               </div>
             )}
@@ -244,7 +310,12 @@ function AgentChat({
 
         {/* Input */}
         <div className="mx-auto w-full max-w-3xl">
-          <ChatInput onSend={send} disabled={isStreaming} />
+          <ChatInput
+            onSend={send}
+            onStop={cancel}
+            disabled={isStreaming}
+            domainLabel={domain.display_name}
+          />
         </div>
       </div>
     </div>
@@ -254,7 +325,15 @@ function AgentChat({
 // ---------------------------------------------------------------------------
 // AgentChatPage
 // ---------------------------------------------------------------------------
-export default function AgentChatPage() {
+interface AgentChatPageProps {
+  pendingQuery?: string | null;
+  onClearPendingQuery?: () => void;
+}
+
+export default function AgentChatPage({
+  pendingQuery,
+  onClearPendingQuery,
+}: AgentChatPageProps = {}) {
   const [domains, setDomains] = useState<DomainInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<DomainInfo | null>(null);
@@ -266,25 +345,44 @@ export default function AgentChatPage() {
       .catch(() => setLoading(false));
   }, []);
 
+  // Auto-select sole domain when pendingQuery arrives (QuickAsk flow)
+  useEffect(() => {
+    if (
+      pendingQuery &&
+      pendingQuery.trim() &&
+      !selectedDomain &&
+      domains.length >= 1
+    ) {
+      setSelectedDomain(domains[0]);
+    }
+  }, [pendingQuery, domains, selectedDomain]);
+
   if (selectedDomain) {
-    return <AgentChat domain={selectedDomain} onBack={() => setSelectedDomain(null)} />;
+    return (
+      <AgentChat
+        domain={selectedDomain}
+        onBack={() => setSelectedDomain(null)}
+        pendingQuery={pendingQuery}
+        onClearPendingQuery={onClearPendingQuery}
+      />
+    );
   }
 
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-xl font-bold text-slate-100">에이전트 선택</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-xl font-bold text-text-strong">에이전트 선택</h1>
+          <p className="mt-1 text-sm text-text-dim">
             도메인을 선택하여 대화형 데이터 분석을 시작하세요.
           </p>
         </div>
 
         {loading ? (
-          <p className="text-sm text-slate-500">로딩 중...</p>
+          <p className="text-sm text-text-dim">로딩 중...</p>
         ) : domains.length === 0 ? (
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-8 text-center">
-            <p className="text-sm text-slate-500">
+          <div className="rounded-lg border border-border-subtle bg-bg-elev-1 p-8 text-center">
+            <p className="text-sm text-text-dim">
               등록된 도메인이 없습니다. schema_registry/domains/ 에 JSON을 추가하세요.
             </p>
           </div>

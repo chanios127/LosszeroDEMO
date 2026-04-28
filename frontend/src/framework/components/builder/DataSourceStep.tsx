@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DataTable } from "../VizPanel";
+import { DataTable } from "../../../design/components/VizPanel";
 
 type SourceMode = "sql" | "natural";
 
@@ -66,15 +66,15 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-slate-300 mb-2">
+        <h3 className="text-sm font-semibold text-text-base mb-2">
           1. 데이터 수집
         </h3>
-        <p className="text-xs text-slate-500 mb-3">
+        <p className="text-xs text-text-dim mb-3">
           SQL을 직접 입력하거나 자연어로 설명하세요.
         </p>
 
         {/* Mode tabs */}
-        <div className="flex gap-1 mb-3 border-b border-slate-800">
+        <div className="flex gap-1 mb-3 border-b border-border-subtle">
           {(["sql", "natural"] as const).map((m) => (
             <button
               key={m}
@@ -82,7 +82,7 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
               className={`px-4 py-2 text-xs transition-colors border-b-2 ${
                 mode === m
                   ? "border-brand-500 text-brand-500"
-                  : "border-transparent text-slate-500 hover:text-slate-300"
+                  : "border-transparent text-text-dim hover:text-text-base"
               }`}
             >
               {m === "sql" ? "SQL 직접 입력" : "자연어"}
@@ -98,8 +98,8 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
               onChange={(e) => setSql(e.target.value)}
               placeholder="SELECT wcCd, SUM(Qty) FROM ..."
               rows={4}
-              className="w-full resize-none rounded-lg bg-slate-800 px-4 py-3 font-mono text-sm
-                text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full resize-none rounded-lg bg-bg-elev-2 px-4 py-3 font-mono text-sm
+                text-text-strong placeholder:text-text-dim outline-none focus:ring-2 focus:ring-brand-500"
             />
             <button
               onClick={() => executeSql(sql.trim())}
@@ -120,8 +120,8 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="예: 공정별로 오늘 총 생산량을 집계해줘"
               rows={3}
-              className="w-full resize-none rounded-lg bg-slate-800 px-4 py-3 text-sm
-                text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-brand-500"
+              className="w-full resize-none rounded-lg bg-bg-elev-2 px-4 py-3 text-sm
+                text-text-strong placeholder:text-text-dim outline-none focus:ring-2 focus:ring-brand-500"
             />
             <button
               onClick={generateFromNatural}
@@ -132,9 +132,9 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
               {loading ? "생성 중..." : "SQL 생성 + 실행"}
             </button>
             {generatedSql && (
-              <div className="mt-3 rounded bg-slate-800/50 p-3">
-                <p className="text-[10px] text-slate-500 mb-1">생성된 SQL:</p>
-                <code className="text-xs text-slate-300 whitespace-pre-wrap break-all">
+              <div className="mt-3 rounded bg-bg-elev-2 p-3">
+                <p className="text-[10px] text-text-dim mb-1">생성된 SQL:</p>
+                <code className="text-xs text-text-base whitespace-pre-wrap break-all">
                   {generatedSql}
                 </code>
               </div>
@@ -145,7 +145,7 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-800/50 bg-red-900/20 p-3 text-sm text-red-400">
+        <div className="rounded-lg border border-[color:color-mix(in_oklch,var(--danger)_30%,transparent)] bg-[color:color-mix(in_oklch,var(--danger)_15%,transparent)] p-3 text-sm text-danger">
           {error}
         </div>
       )}
@@ -154,12 +154,12 @@ export default function DataSourceStep({ onDataReady }: DataSourceStepProps) {
       {preview && preview.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold text-slate-400">
+            <h4 className="text-xs font-semibold text-text-muted">
               결과 미리보기 ({preview.length} rows)
             </h4>
             <button
               onClick={handleUse}
-              className="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-500"
+              className="rounded bg-success px-3 py-1 text-xs font-medium text-white hover:bg-success"
             >
               이 데이터로 진행 →
             </button>

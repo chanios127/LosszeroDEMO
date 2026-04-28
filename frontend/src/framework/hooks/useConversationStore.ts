@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ChatMessage } from "../types/events";
+import type { ChatMessage, Conversation } from "../../design/types/events";
 
-export interface Conversation {
-  id: string;
-  title: string;
-  domain: string;          // domain key (e.g. "groupware")
-  domainLabel: string;     // display name
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
-}
+export type { Conversation };
 
 const STORAGE_KEY = "llm-harness-conversations";
 
@@ -90,20 +82,32 @@ export function useConversationStore() {
       domain: string,
       domainLabel: string,
       messages: ChatMessage[],
+      sessionId?: string,
+      streamKey?: string,
     ) => {
       if (messages.length === 0) return;
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === id);
         const title = existing?.title ?? generateTitle(messages);
         const now = Date.now();
+        // Preserve previously stored sessionId/streamKey if the current call
+        // didn't provide them (e.g. autosave fires before backend assigns them).
         const updated: Conversation = existing
-          ? { ...existing, messages, updatedAt: now }
+          ? {
+              ...existing,
+              messages,
+              sessionId: sessionId ?? existing.sessionId,
+              streamKey: streamKey ?? existing.streamKey,
+              updatedAt: now,
+            }
           : {
               id,
               title,
               domain,
               domainLabel,
               messages,
+              sessionId,
+              streamKey,
               createdAt: now,
               updatedAt: now,
             };

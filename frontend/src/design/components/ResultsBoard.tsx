@@ -30,18 +30,18 @@ function ResultHistoryItem({
       onClick={onClick}
       className={`w-full border-l-2 px-3 py-2 text-left transition-colors ${
         isActive
-          ? "border-brand-500 bg-slate-800"
-          : "border-transparent hover:bg-slate-800/50"
+          ? "border-brand-500 bg-bg-elev-2"
+          : "border-transparent hover:bg-bg-elev-2"
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-xs text-slate-400">
+        <span className="shrink-0 rounded bg-bg-elev-2 px-1.5 py-0.5 text-xs text-text-muted">
           {VIZ_ICON_MAP[entry.vizHint]}
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm text-slate-300">
+        <span className="min-w-0 flex-1 truncate text-sm text-text-base">
           {entry.query}
         </span>
-        <span className="shrink-0 text-xs text-slate-500">
+        <span className="shrink-0 text-xs text-text-dim">
           {relativeTime(entry.timestamp)}
         </span>
       </div>
@@ -56,10 +56,10 @@ function ActiveResultView({ entry }: { entry: ResultEntry }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-slate-200 leading-snug">
+        <p className="text-sm font-medium text-text-strong leading-snug">
           {entry.query}
         </p>
-        <span className="shrink-0 text-xs text-slate-500">
+        <span className="shrink-0 text-xs text-text-dim">
           {new Date(entry.timestamp).toLocaleTimeString("ko-KR", {
             hour: "2-digit",
             minute: "2-digit",
@@ -74,8 +74,8 @@ function ActiveResultView({ entry }: { entry: ResultEntry }) {
           initialHint={entry.vizHint}
         />
       ) : (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-          <p className="text-sm text-slate-300 whitespace-pre-wrap">
+        <div className="rounded-lg border border-border-subtle bg-bg-elev-1 p-4">
+          <p className="text-sm text-text-base whitespace-pre-wrap">
             {entry.answer}
           </p>
         </div>
@@ -101,9 +101,9 @@ export default function ResultsBoard({
   if (results.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <span className="text-4xl text-slate-700">⊞</span>
-        <p className="text-sm text-slate-500">아직 결과가 없습니다</p>
-        <p className="text-xs text-slate-600">
+        <span className="text-4xl text-text-faint">⊞</span>
+        <p className="text-sm text-text-dim">아직 결과가 없습니다</p>
+        <p className="text-xs text-text-faint">
           쿼리를 전송하면 결과가 여기에 표시됩니다
         </p>
       </div>
@@ -125,9 +125,9 @@ export default function ResultsBoard({
 
       {/* History list */}
       {results.length > 1 && (
-        <div className="max-h-56 overflow-auto border-t border-slate-800">
+        <div className="max-h-56 overflow-auto border-t border-border-subtle">
           <div className="px-3 py-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-dim">
               이전 결과
             </span>
           </div>

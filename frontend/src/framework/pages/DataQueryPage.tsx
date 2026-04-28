@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DataTable } from "../components/VizPanel";
+import { DataTable } from "../../design/components/VizPanel";
 
 interface QueryResult {
   id: string;
@@ -71,9 +71,9 @@ export default function DataQueryPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* SQL input */}
-      <div className="border-b border-slate-800 p-4 shrink-0">
+      <div className="border-b border-border-subtle p-4 shrink-0">
         <div className="mx-auto max-w-5xl">
-          <label className="mb-2 block text-xs font-medium text-slate-400">
+          <label className="mb-2 block text-xs font-medium text-text-muted">
             SQL Query (Ctrl+Enter to execute)
           </label>
           <textarea
@@ -82,11 +82,11 @@ export default function DataQueryPage() {
             onKeyDown={handleKeyDown}
             placeholder="SELECT TOP 10 * FROM ..."
             rows={4}
-            className="w-full resize-none rounded-lg bg-slate-800 px-4 py-3 font-mono text-sm
-              text-slate-100 placeholder-slate-500 outline-none focus:ring-2 focus:ring-brand-500"
+            className="w-full resize-none rounded-lg bg-bg-elev-2 px-4 py-3 font-mono text-sm
+              text-text-strong placeholder:text-text-dim outline-none focus:ring-2 focus:ring-brand-500"
           />
           <div className="mt-2 flex items-center justify-between">
-            <p className="text-[10px] text-slate-600">
+            <p className="text-[10px] text-text-faint">
               읽기 전용 — SELECT만 허용, DML/DDL 차단
             </p>
             <button
@@ -107,29 +107,29 @@ export default function DataQueryPage() {
           {results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="text-3xl mb-3">📊</div>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-text-dim">
                 SQL 쿼리를 입력하고 실행하면 결과가 여기에 표시됩니다.
               </p>
             </div>
           )}
 
           {results.map((r) => (
-            <div key={r.id} className="rounded-lg border border-slate-800 bg-slate-900/50">
-              <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-                <code className="text-xs text-slate-400 truncate max-w-[80%]">
+            <div key={r.id} className="rounded-lg border border-border-subtle bg-bg-elev-1">
+              <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
+                <code className="text-xs text-text-muted truncate max-w-[80%]">
                   {r.sql}
                 </code>
-                <span className="text-[10px] text-slate-600">
+                <span className="text-[10px] text-text-faint">
                   {r.rows} rows / {new Date(r.executedAt).toLocaleTimeString()}
                 </span>
               </div>
               <div className="p-4">
                 {r.error ? (
-                  <p className="text-sm text-red-400">{r.error}</p>
+                  <p className="text-sm text-danger">{r.error}</p>
                 ) : r.data && r.data.length > 0 ? (
                   <DataTable data={r.data} />
                 ) : (
-                  <p className="text-sm text-slate-500">결과 없음</p>
+                  <p className="text-sm text-text-dim">결과 없음</p>
                 )}
               </div>
             </div>

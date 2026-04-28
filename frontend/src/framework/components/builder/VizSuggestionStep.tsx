@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { SwitchableViz } from "../VizPanel";
-import type { VizHint } from "../../types/events";
+import { SwitchableViz } from "../../../design/components/VizPanel";
+import type { VizHint } from "../../../design/types/events";
 
 interface VizSuggestion {
   viz_hint: VizHint;
@@ -49,42 +49,42 @@ export default function VizSuggestionStep({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-300">
+          <h3 className="text-sm font-semibold text-text-base">
             2. 시각화 구상
           </h3>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-text-dim">
             LLM이 데이터 형태를 분석해 추천 차트를 제안합니다.
           </p>
         </div>
         <button
           onClick={onBack}
-          className="rounded bg-slate-800 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-700"
+          className="rounded bg-bg-elev-2 px-3 py-1.5 text-xs text-text-muted hover:bg-bg-elev-3"
         >
           ← 데이터 다시 선택
         </button>
       </div>
 
       {loading && (
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-8 text-center">
-          <p className="text-sm text-slate-500">LLM 분석 중...</p>
+        <div className="rounded-lg border border-border-subtle bg-bg-elev-1 p-8 text-center">
+          <p className="text-sm text-text-dim">LLM 분석 중...</p>
         </div>
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-800/50 bg-red-900/20 p-4 text-sm text-red-400">
+        <div className="rounded-lg border border-[color:color-mix(in_oklch,var(--danger)_30%,transparent)] bg-[color:color-mix(in_oklch,var(--danger)_15%,transparent)] p-4 text-sm text-danger">
           {error}
         </div>
       )}
 
       {suggestion && !loading && (
         <>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-            <p className="text-[10px] font-semibold uppercase text-slate-500 mb-1">
+          <div className="rounded-lg border border-border-subtle bg-bg-elev-1 p-4">
+            <p className="text-[10px] font-semibold uppercase text-text-dim mb-1">
               추천 차트: {suggestion.viz_hint}
             </p>
-            <p className="text-sm text-slate-300">{suggestion.reasoning}</p>
+            <p className="text-sm text-text-base">{suggestion.reasoning}</p>
             {(suggestion.x_axis || suggestion.y_axis) && (
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-text-dim">
                 {suggestion.x_axis && `X: ${suggestion.x_axis}`}
                 {suggestion.x_axis && suggestion.y_axis && " · "}
                 {suggestion.y_axis && `Y: ${suggestion.y_axis}`}
@@ -92,14 +92,14 @@ export default function VizSuggestionStep({
             )}
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-4">
+          <div className="rounded-lg border border-border-subtle bg-bg-elev-1 p-4">
             <SwitchableViz data={data} initialHint={suggestion.viz_hint} />
           </div>
 
           <div className="flex gap-2 justify-end">
             <button
               disabled
-              className="rounded bg-slate-800 px-4 py-1.5 text-sm text-slate-500 cursor-not-allowed"
+              className="rounded bg-bg-elev-2 px-4 py-1.5 text-sm text-text-dim cursor-not-allowed"
               title="Phase 6에서 제공"
             >
               위젯으로 저장 (준비 중)
