@@ -8,31 +8,17 @@ from typing import AsyncGenerator
 
 import anthropic
 
-from llm.base import LLMEvent, LLMEventType, LLMProvider, Message, ToolCall, ToolSchema
+from llm.base import (
+    LLMEvent,
+    LLMEventType,
+    LLMProvider,
+    Message,
+    ToolCall,
+    ToolSchema,
+    load_base_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT = """\
-You are a manufacturing ERP data assistant. You help users query production, \
-inventory, and work-order data from a MSSQL database by selecting appropriate \
-stored procedures or running read-only SELECT queries.
-
-Rules:
-- Always use the provided tools to retrieve data before answering.
-- Never fabricate data. If a tool fails, report the error honestly.
-- After retrieving data, summarize findings concisely in Korean or English \
-  matching the user's language.
-- If the user's intent is ambiguous, ask one clarifying question.
-
-Visualization:
-- The frontend automatically renders charts/tables from tool results (db_query, sp_call).
-- When the user asks for a graph/chart/visualization, you MUST re-query the data \
-  using db_query or sp_call, even if you showed the same data before. \
-  The frontend only visualizes data returned in the current response.
-- Do NOT draw ASCII charts or markdown tables as a substitute for actual data queries.
-- Supported viz types: bar_chart, line_chart, pie_chart, table, number \
-  (auto-detected from result shape).
-"""
 
 
 class ClaudeProvider(LLMProvider):
@@ -63,7 +49,7 @@ class ClaudeProvider(LLMProvider):
         Returns (system_prompt, messages).
         """
         # Collect system messages and merge with base prompt
-        system_parts = [_SYSTEM_PROMPT]
+        system_parts = [load_base_system_prompt()]
         result: list[dict] = []
         for m in messages:
             role = m["role"]

@@ -10,36 +10,116 @@ from typing import AsyncGenerator
 
 import httpx
 
-from llm.base import LLMEvent, LLMEventType, LLMProvider, Message, ToolCall, ToolSchema
+from llm.base import (
+    LLMEvent,
+    LLMEventType,
+    LLMProvider,
+    Message,
+    ToolCall,
+    ToolSchema,
+    load_base_system_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """\
-You are a manufacturing ERP data assistant. You help users query production, \
-inventory, and work-order data from a MSSQL database by selecting appropriate \
-stored procedures or running read-only SELECT queries.
-
-Rules:
-- Always use the provided tools to retrieve data before answering.
-- Never fabricate data. If a tool fails, report the error honestly.
-- After retrieving data, summarize findings concisely in Korean or English \
-  matching the user's language.
-- If the user's intent is ambiguous, ask one clarifying question.
-- When writing SQL, wrap it in <execute_sql>SQL_HERE</execute_sql> tags.
-
-Visualization:
-- The frontend automatically renders charts/tables from tool results (db_query, sp_call).
-- When the user asks for a graph/chart/visualization, you MUST re-query the data \
-  using db_query or sp_call, even if you showed the same data before. \
-  The frontend only visualizes data returned in the current response.
-- Do NOT draw ASCII charts or markdown tables as a substitute for actual data queries.
-- Supported viz types: bar_chart, line_chart, pie_chart, table, number \
-  (auto-detected from result shape).
-"""
+# Appended only when native tool-calling fails and we fall back to tag extraction.
+_FALLBACK_TAG_INSTRUCTION = (
+    "\n\n## Fallback mode (no native tools)\n"
+    "This model does not support native tool calling. "
+    "When you need to query data, wrap the SQL in <execute_sql>SQL_HERE</execute_sql> tags. "
+    "The server will extract and execute the first tagged SELECT statement."
+)
 
 _SQL_TAG_RE = re.compile(
     r"<execute_sql>\s*(.*?)\s*</execute_sql>", re.DOTALL | re.IGNORECASE
 )
+
+
+class _HarmonyTransformer:
+    """Streaming transformer: convert Harmony-style channel markers to <think>...</think>.
+
+    Different reasoning models emit different markers around chain-of-thought.
+    We normalize them to the standard `<think>...</think>` form so that both
+    the terminal parser (main.py) and the frontend's existing think-block UI
+    can treat them uniformly.
+
+    Streaming-safe: the transformer holds back partial-marker tails across
+    chunk boundaries so a marker split across two deltas isn't emitted half-formed.
+    """
+
+    OPEN_MARKERS: tuple[str, ...] = (
+        "<|channel|>thought",
+        "<|channel|>analysis",
+        "<|channel|>commentary",
+        "<|channel>thought",
+        "<|channel>analysis",
+        "<|channel>commentary",
+    )
+    CLOSE_MARKERS: tuple[str, ...] = (
+        "<channel|>",            # observed bare-separator variant
+        "<|channel|>final",
+        "<|channel>final",
+        "<|end|>",
+        "</think>",              # passthrough — already standard
+    )
+    HOLDBACK = max(len(m) for m in OPEN_MARKERS + CLOSE_MARKERS)
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._in_think = False
+
+    @staticmethod
+    def _find_first(buf: str, markers: tuple[str, ...]) -> tuple[int, str]:
+        best_idx, best_marker = -1, ""
+        for m in markers:
+            i = buf.find(m)
+            if i != -1 and (best_idx == -1 or i < best_idx):
+                best_idx, best_marker = i, m
+        return best_idx, best_marker
+
+    def feed(self, chunk: str) -> str:
+        """Append chunk; return text safe to emit (with markers normalized)."""
+        self._buf += chunk
+        out: list[str] = []
+        while True:
+            if not self._in_think:
+                idx, marker = self._find_first(self._buf, self.OPEN_MARKERS)
+                if idx == -1:
+                    # No open marker — hold back enough tail to cover a partial marker
+                    safe = max(0, len(self._buf) - self.HOLDBACK + 1)
+                    if safe > 0:
+                        out.append(self._buf[:safe])
+                        self._buf = self._buf[safe:]
+                    break
+                if idx > 0:
+                    out.append(self._buf[:idx])
+                out.append("<think>")
+                self._buf = self._buf[idx + len(marker):]
+                self._in_think = True
+            else:
+                idx, marker = self._find_first(self._buf, self.CLOSE_MARKERS)
+                if idx == -1:
+                    safe = max(0, len(self._buf) - self.HOLDBACK + 1)
+                    if safe > 0:
+                        out.append(self._buf[:safe])
+                        self._buf = self._buf[safe:]
+                    break
+                if idx > 0:
+                    out.append(self._buf[:idx])
+                # If the marker is </think>, keep it; otherwise normalize to </think>
+                out.append("</think>" if marker != "</think>" else "</think>")
+                self._buf = self._buf[idx + len(marker):]
+                self._in_think = False
+        return "".join(out)
+
+    def flush(self) -> str:
+        """Drain any held-back text at stream end. Closes an open think block."""
+        out = self._buf
+        if self._in_think:
+            out += "</think>"
+            self._in_think = False
+        self._buf = ""
+        return out
 
 
 class LMStudioProvider(LLMProvider):
@@ -67,7 +147,7 @@ class LMStudioProvider(LLMProvider):
 
     def _to_openai_messages(self, messages: list[Message]) -> list[dict]:
         # Merge base system prompt with any injected system messages
-        system_parts = [_SYSTEM_PROMPT]
+        system_parts = [load_base_system_prompt()]
         result: list[dict] = []
         for m in messages:
             role = m["role"]
@@ -112,8 +192,9 @@ class LMStudioProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema],
     ) -> AsyncGenerator[LLMEvent, None]:
+        openai_messages = self._to_openai_messages(messages)
         payload: dict = {
-            "messages": self._to_openai_messages(messages),
+            "messages": openai_messages,
             "stream": True,
         }
         if self.model:
@@ -123,6 +204,24 @@ class LMStudioProvider(LLMProvider):
             payload["tool_choice"] = "auto"
 
         url = f"{self.base_url}/chat/completions"
+
+        sys_len = (
+            len(openai_messages[0].get("content", ""))
+            if openai_messages and openai_messages[0].get("role") == "system"
+            else 0
+        )
+        logger.info(
+            "LM Studio request: model=%r messages=%d tools=%d system_len=%d",
+            self.model or "(unset)",
+            len(openai_messages),
+            len(tools or []),
+            sys_len,
+        )
+
+        chunk_count = 0
+        text_delta_count = 0
+        tool_call_emit_count = 0
+        transformer = _HarmonyTransformer()
 
         try:
             async with self._client.stream("POST", url, json=payload) as resp:
@@ -148,16 +247,20 @@ class LMStudioProvider(LLMProvider):
                         chunk = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
+                    chunk_count += 1
 
                     choice = chunk.get("choices", [{}])[0]
                     delta = choice.get("delta", {})
                     finish_reason = choice.get("finish_reason")
 
-                    # Text delta
+                    # Text delta — normalize Harmony channel markers to <think>...</think>
                     if delta.get("content"):
-                        yield LLMEvent(
-                            type=LLMEventType.TEXT_DELTA, delta=delta["content"]
-                        )
+                        normalized = transformer.feed(delta["content"])
+                        if normalized:
+                            text_delta_count += 1
+                            yield LLMEvent(
+                                type=LLMEventType.TEXT_DELTA, delta=normalized
+                            )
 
                     # Tool call accumulation
                     for tc_delta in delta.get("tool_calls", []):
@@ -185,6 +288,7 @@ class LMStudioProvider(LLMProvider):
                                 )
                             except json.JSONDecodeError:
                                 parsed = {}
+                            tool_call_emit_count += 1
                             yield LLMEvent(
                                 type=LLMEventType.TOOL_CALL,
                                 tool_call=ToolCall(
@@ -194,6 +298,18 @@ class LMStudioProvider(LLMProvider):
                                 ),
                             )
 
+                # Drain transformer buffer (closes any open think block)
+                tail = transformer.flush()
+                if tail:
+                    text_delta_count += 1
+                    yield LLMEvent(type=LLMEventType.TEXT_DELTA, delta=tail)
+
+                if text_delta_count == 0 and tool_call_emit_count == 0:
+                    logger.warning(
+                        "LM Studio stream ended with no content: chunks=%d, "
+                        "text_deltas=0, tool_calls=0 (model=%r)",
+                        chunk_count, self.model or "(unset)",
+                    )
                 yield LLMEvent(type=LLMEventType.DONE)
 
         except httpx.HTTPError as exc:
@@ -204,8 +320,12 @@ class LMStudioProvider(LLMProvider):
         self, messages: list[Message]
     ) -> AsyncGenerator[LLMEvent, None]:
         """Fallback: send without tools, extract SQL from <execute_sql> tags."""
+        openai_messages = self._to_openai_messages(messages)
+        # Append fallback-mode instruction onto the system message
+        if openai_messages and openai_messages[0].get("role") == "system":
+            openai_messages[0]["content"] += _FALLBACK_TAG_INSTRUCTION
         payload: dict = {
-            "messages": self._to_openai_messages(messages),
+            "messages": openai_messages,
             "stream": False,
         }
         if self.model:
@@ -220,6 +340,16 @@ class LMStudioProvider(LLMProvider):
             data = resp.json()
 
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            if not content:
+                logger.warning(
+                    "LM Studio fallback returned empty content (model=%r)",
+                    self.model or "(unset)",
+                )
+
+            # Normalize Harmony channel markers (single-shot — feed all + flush)
+            transformer = _HarmonyTransformer()
+            content = transformer.feed(content) + transformer.flush()
 
             # Try to extract SQL from tags
             match = _SQL_TAG_RE.search(content)
