@@ -1,0 +1,1138 @@
+{
+  "tables": [
+    {
+      "name": "dbo.TGW_AttendList",
+      "table_group": "attendance",
+      "description": "출/퇴근 기록 (51,960행)",
+      "columns": [
+        {
+          "name": "at_AttDt",
+          "type": "datetime",
+          "pk": true,
+          "nullable": false,
+          "description": "출근일시 (PK)"
+        },
+        {
+          "name": "at_UserID",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "사용자ID (PK)"
+        },
+        {
+          "name": "at_DeptCd",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "부서코드"
+        },
+        {
+          "name": "at_AttFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "출근구분"
+        },
+        {
+          "name": "at_TmFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "시간구분"
+        },
+        {
+          "name": "at_AttTm",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "출근시각"
+        },
+        {
+          "name": "at_LeavTm",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "퇴근시각"
+        },
+        {
+          "name": "at_okFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "확인여부"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_AttendExcept",
+      "table_group": "attendance",
+      "description": "휴가/기안 신청 (9,381행) — 연차·반차·외출·출장 등 근태 예외",
+      "columns": [
+        {
+          "name": "ae_SRNO",
+          "type": "int",
+          "pk": true,
+          "nullable": false,
+          "description": "기안번호 (PK, Identity)"
+        },
+        {
+          "name": "ae_UserID",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "신청자ID"
+        },
+        {
+          "name": "ae_sDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "시작일시"
+        },
+        {
+          "name": "ae_eDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "종료일시"
+        },
+        {
+          "name": "ae_sTime",
+          "type": "char(4)",
+          "pk": false,
+          "nullable": true,
+          "description": "시작시각 (HHMM)"
+        },
+        {
+          "name": "ae_eTime",
+          "type": "char(4)",
+          "pk": false,
+          "nullable": true,
+          "description": "종료시각 (HHMM)"
+        },
+        {
+          "name": "ae_term",
+          "type": "numeric(5,1)",
+          "pk": false,
+          "nullable": true,
+          "description": "기간(일수)"
+        },
+        {
+          "name": "ae_rFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "휴가유형코드"
+        },
+        {
+          "name": "ae_Type",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "신청유형"
+        },
+        {
+          "name": "ae_reason",
+          "type": "varchar(1000)",
+          "pk": false,
+          "nullable": true,
+          "description": "사유"
+        },
+        {
+          "name": "ae_destination",
+          "type": "varchar(1000)",
+          "pk": false,
+          "nullable": true,
+          "description": "행선지"
+        },
+        {
+          "name": "ae_proxy",
+          "type": "varchar(500)",
+          "pk": false,
+          "nullable": true,
+          "description": "대리자"
+        },
+        {
+          "name": "ae_AppFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재구분"
+        },
+        {
+          "name": "ae_GWStatus",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "전자결재상태"
+        },
+        {
+          "name": "ae_AtFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "근태구분"
+        },
+        {
+          "name": "ae_WriteDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작성일시"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_AttendExcept_T",
+      "table_group": "attendance",
+      "description": "휴가/기안 신청 임시테이블 (7,411행) — TGW_AttendExcept와 동일 구조",
+      "columns": [
+        {
+          "name": "ae_SRNO",
+          "type": "int",
+          "pk": true,
+          "nullable": false,
+          "description": "기안번호 (PK)"
+        },
+        {
+          "name": "ae_UserID",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "신청자ID"
+        },
+        {
+          "name": "ae_sDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "시작일시"
+        },
+        {
+          "name": "ae_eDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "종료일시"
+        },
+        {
+          "name": "ae_rFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "휴가유형코드"
+        },
+        {
+          "name": "ae_term",
+          "type": "numeric(5,1)",
+          "pk": false,
+          "nullable": true,
+          "description": "기간(일수)"
+        },
+        {
+          "name": "ae_AppFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재구분"
+        },
+        {
+          "name": "ae_GWStatus",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "전자결재상태"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_TaskDailyLog",
+      "table_group": "task",
+      "description": "업무일지 (32,598행) — 직원별 금일업무·익일계획 기록",
+      "columns": [
+        {
+          "name": "td_TDNo",
+          "type": "varchar(10)",
+          "pk": true,
+          "nullable": false,
+          "description": "업무일지번호 (PK)"
+        },
+        {
+          "name": "td_myUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자ID"
+        },
+        {
+          "name": "td_myDept",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자부서코드"
+        },
+        {
+          "name": "td_addrUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "수신자ID"
+        },
+        {
+          "name": "td_writeDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작성일시"
+        },
+        {
+          "name": "td_Title",
+          "type": "varchar(200)",
+          "pk": false,
+          "nullable": true,
+          "description": "제목"
+        },
+        {
+          "name": "td_Today",
+          "type": "varchar(8000)",
+          "pk": false,
+          "nullable": true,
+          "description": "금일 업무내용"
+        },
+        {
+          "name": "td_Tomorrow",
+          "type": "varchar(4000)",
+          "pk": false,
+          "nullable": true,
+          "description": "익일 업무예정"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_TaskPlan",
+      "table_group": "task",
+      "description": "업무계획 (155행) — 개인 업무계획 등록",
+      "columns": [
+        {
+          "name": "tp_TPNo",
+          "type": "varchar(10)",
+          "pk": true,
+          "nullable": false,
+          "description": "업무계획번호 (PK)"
+        },
+        {
+          "name": "tp_myUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자ID"
+        },
+        {
+          "name": "tp_myDept",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자부서코드"
+        },
+        {
+          "name": "tp_Title",
+          "type": "nvarchar(100)",
+          "pk": false,
+          "nullable": true,
+          "description": "계획제목"
+        },
+        {
+          "name": "tp_sDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "계획시작일시"
+        },
+        {
+          "name": "tp_eDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "계획종료일시"
+        },
+        {
+          "name": "tp_Status",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "진행상태"
+        },
+        {
+          "name": "tp_WBNO",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "연결 AS현안번호"
+        },
+        {
+          "name": "tp_tsFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "업무구분"
+        },
+        {
+          "name": "tp_tmRank",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "우선순위"
+        },
+        {
+          "name": "tp_planText",
+          "type": "text",
+          "pk": false,
+          "nullable": true,
+          "description": "계획내용"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_WorkBoard",
+      "table_group": "workboard",
+      "description": "AS현안관리 헤더 (20,672행) — 고객현안 접수·처리 메인",
+      "columns": [
+        {
+          "name": "wb_WBNO",
+          "type": "varchar(12)",
+          "pk": true,
+          "nullable": false,
+          "description": "현안번호 (PK)"
+        },
+        {
+          "name": "wb_revNo",
+          "type": "char(3)",
+          "pk": true,
+          "nullable": false,
+          "description": "개정번호 (PK)"
+        },
+        {
+          "name": "wb_Status",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "처리상태 (IDX)"
+        },
+        {
+          "name": "wb_reqDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "접수일시 (IDX)"
+        },
+        {
+          "name": "wb_Title",
+          "type": "varchar(100)",
+          "pk": false,
+          "nullable": true,
+          "description": "현안제목 (IDX)"
+        },
+        {
+          "name": "wb_CustCD",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "거래처코드"
+        },
+        {
+          "name": "wb_workTy",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "작업유형"
+        },
+        {
+          "name": "wb_reqFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "요청구분"
+        },
+        {
+          "name": "wb_reqLevel",
+          "type": "varchar(5)",
+          "pk": false,
+          "nullable": true,
+          "description": "요청등급"
+        },
+        {
+          "name": "wb_emFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "긴급여부"
+        },
+        {
+          "name": "wb_visitFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "방문여부"
+        },
+        {
+          "name": "wb_reqUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "요청자ID"
+        },
+        {
+          "name": "wb_myUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "담당자ID"
+        },
+        {
+          "name": "wb_reqText",
+          "type": "text",
+          "pk": false,
+          "nullable": true,
+          "description": "요청내용"
+        },
+        {
+          "name": "wb_recvDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "수신일시"
+        },
+        {
+          "name": "wb_delivDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "납기일"
+        },
+        {
+          "name": "wb_actDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "조치일시"
+        },
+        {
+          "name": "wb_fixTy",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "처리유형"
+        },
+        {
+          "name": "wb_fixLevel",
+          "type": "varchar(5)",
+          "pk": false,
+          "nullable": true,
+          "description": "처리등급"
+        },
+        {
+          "name": "wb_fixText",
+          "type": "text",
+          "pk": false,
+          "nullable": true,
+          "description": "조치내용"
+        },
+        {
+          "name": "wb_CostAmt",
+          "type": "numeric(20,5)",
+          "pk": false,
+          "nullable": true,
+          "description": "비용금액"
+        },
+        {
+          "name": "wb_Score",
+          "type": "varchar(5)",
+          "pk": false,
+          "nullable": true,
+          "description": "만족도점수"
+        },
+        {
+          "name": "wb_billFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "청구여부"
+        },
+        {
+          "name": "wb_devFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "개발건여부"
+        },
+        {
+          "name": "wb_devTy",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "개발유형"
+        },
+        {
+          "name": "wb_SWID",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "소프트웨어ID (IDX)"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_WorkBoard_Plan",
+      "table_group": "workboard",
+      "description": "AS작업계획 (7,321행) — 현안별 담당자 작업 일정",
+      "columns": [
+        {
+          "name": "wp_WDNo",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "작업계획번호 (PK)"
+        },
+        {
+          "name": "wp_Uid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "담당자ID"
+        },
+        {
+          "name": "wp_workDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작업예정일"
+        },
+        {
+          "name": "wp_WBNo",
+          "type": "varchar(12)",
+          "pk": false,
+          "nullable": true,
+          "description": "현안번호"
+        },
+        {
+          "name": "wp_revNo",
+          "type": "char(3)",
+          "pk": false,
+          "nullable": true,
+          "description": "현안개정번호"
+        },
+        {
+          "name": "wp_AMFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "오전작업여부"
+        },
+        {
+          "name": "wp_PMFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "오후작업여부"
+        },
+        {
+          "name": "wp_Rmk",
+          "type": "nvarchar(500)",
+          "pk": false,
+          "nullable": true,
+          "description": "비고"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_WorkBoardTail",
+      "table_group": "workboard",
+      "description": "AS현안 댓글 (6,275행)",
+      "columns": [
+        {
+          "name": "wt_SRNo",
+          "type": "int",
+          "pk": true,
+          "nullable": false,
+          "description": "댓글번호 (PK, Identity)"
+        },
+        {
+          "name": "wt_WBNO",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "현안번호"
+        },
+        {
+          "name": "wt_revNo",
+          "type": "char(3)",
+          "pk": false,
+          "nullable": true,
+          "description": "현안개정번호"
+        },
+        {
+          "name": "wt_workDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작성일시"
+        },
+        {
+          "name": "wt_workUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자ID"
+        },
+        {
+          "name": "wt_replyText",
+          "type": "text",
+          "pk": false,
+          "nullable": true,
+          "description": "댓글내용"
+        },
+        {
+          "name": "wt_level",
+          "type": "int",
+          "pk": false,
+          "nullable": true,
+          "description": "댓글깊이"
+        },
+        {
+          "name": "wt_OSRNo",
+          "type": "int",
+          "pk": false,
+          "nullable": true,
+          "description": "원댓글번호"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_ApprovalNote",
+      "table_group": "approval",
+      "description": "전자결재 문서 (319행)",
+      "columns": [
+        {
+          "name": "an_GWReqNo",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "결재요청번호 (PK)"
+        },
+        {
+          "name": "an_DocFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "문서구분"
+        },
+        {
+          "name": "an_DocID",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "문서ID"
+        },
+        {
+          "name": "an_appDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "결재일시"
+        },
+        {
+          "name": "an_empNo",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "기안자사번"
+        },
+        {
+          "name": "an_title",
+          "type": "varchar(100)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재제목"
+        },
+        {
+          "name": "an_content",
+          "type": "varchar(500)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재내용"
+        },
+        {
+          "name": "an_status",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재상태"
+        },
+        {
+          "name": "an_okFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "최종결재여부"
+        },
+        {
+          "name": "an_actDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "처리일시"
+        },
+        {
+          "name": "an_Approval",
+          "type": "nvarchar(2000)",
+          "pk": false,
+          "nullable": true,
+          "description": "결재라인(JSON형태)"
+        },
+        {
+          "name": "an_UK",
+          "type": "varchar(50)",
+          "pk": false,
+          "nullable": true,
+          "description": "유니크키 (IDX)"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_Approval_Notify_ProcLog",
+      "table_group": "approval",
+      "description": "결재 알림 처리 로그 (820행)",
+      "columns": [
+        {
+          "name": "SRNO",
+          "type": "int",
+          "pk": false,
+          "nullable": true,
+          "description": "일련번호"
+        },
+        {
+          "name": "ProcDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "처리일시"
+        },
+        {
+          "name": "ProcLog",
+          "type": "text",
+          "pk": false,
+          "nullable": true,
+          "description": "처리로그"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_NWMeetingRoomAppointments",
+      "table_group": "meeting",
+      "description": "회의실 예약 (408행)",
+      "columns": [
+        {
+          "name": "UniqueId",
+          "type": "int",
+          "pk": true,
+          "nullable": false,
+          "description": "예약번호 (PK, Identity)"
+        },
+        {
+          "name": "sDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "예약시작일시"
+        },
+        {
+          "name": "eDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "예약종료일시"
+        },
+        {
+          "name": "sTm",
+          "type": "char(4)",
+          "pk": false,
+          "nullable": true,
+          "description": "시작시각 (HHMM)"
+        },
+        {
+          "name": "eTm",
+          "type": "char(4)",
+          "pk": false,
+          "nullable": true,
+          "description": "종료시각 (HHMM)"
+        },
+        {
+          "name": "Subject",
+          "type": "varchar(1000)",
+          "pk": false,
+          "nullable": true,
+          "description": "회의제목"
+        },
+        {
+          "name": "Location",
+          "type": "varchar(1000)",
+          "pk": false,
+          "nullable": true,
+          "description": "장소"
+        },
+        {
+          "name": "roomCd",
+          "type": "varchar(50)",
+          "pk": false,
+          "nullable": true,
+          "description": "회의실코드"
+        },
+        {
+          "name": "myUid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "예약자ID"
+        },
+        {
+          "name": "Status",
+          "type": "int",
+          "pk": false,
+          "nullable": true,
+          "description": "예약상태"
+        },
+        {
+          "name": "WorkDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작업기준일"
+        },
+        {
+          "name": "Description",
+          "type": "varchar(1000)",
+          "pk": false,
+          "nullable": true,
+          "description": "회의내용/설명"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_physicalchekup",
+      "table_group": "hr_etc",
+      "description": "건강검진 기록 (52행)",
+      "columns": [
+        {
+          "name": "pc_pcID",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "검진ID (PK)"
+        },
+        {
+          "name": "pc_year",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "검진년도"
+        },
+        {
+          "name": "pc_Uid",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "사용자ID"
+        },
+        {
+          "name": "pc_pcFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "검진구분"
+        },
+        {
+          "name": "pc_pcDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "검진일시"
+        },
+        {
+          "name": "pc_status",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "검진상태"
+        },
+        {
+          "name": "pc_admFg",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "관리구분"
+        },
+        {
+          "name": "pc_Rmk",
+          "type": "nvarchar(200)",
+          "pk": false,
+          "nullable": true,
+          "description": "비고"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TGW_EduTraining_Detail",
+      "table_group": "hr_etc",
+      "description": "교육훈련 상세 (29행)",
+      "columns": [
+        {
+          "name": "ed_No",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "교육번호 (PK)"
+        },
+        {
+          "name": "ed_Seq",
+          "type": "varchar(5)",
+          "pk": true,
+          "nullable": false,
+          "description": "순번 (PK)"
+        },
+        {
+          "name": "ed_WriteNm",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "작성자명"
+        },
+        {
+          "name": "ed_WriteDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "작성일시"
+        },
+        {
+          "name": "ed_Title",
+          "type": "varchar(50)",
+          "pk": false,
+          "nullable": true,
+          "description": "교육과목명"
+        },
+        {
+          "name": "ed_Detail",
+          "type": "varchar(4000)",
+          "pk": false,
+          "nullable": true,
+          "description": "교육내용"
+        },
+        {
+          "name": "ed_rmk",
+          "type": "varchar(4000)",
+          "pk": false,
+          "nullable": true,
+          "description": "비고"
+        }
+      ]
+    },
+    {
+      "name": "dbo.LZXP310T",
+      "table_group": "master",
+      "description": "사용자 마스터 — 사용자ID로 이름을 해석할 때 join. GW 도메인 전 테이블의 *_UserID/*_myUid/*_Uid 컬럼은 기본적으로 이 테이블의 Uid를 가리킨다. 예외: TGW_ApprovalNote.an_empNo는 empNo(사번)로 join.",
+      "columns": [
+        {
+          "name": "Uid",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "사용자ID (PK) — 조인 키"
+        },
+        {
+          "name": "uName",
+          "type": "nvarchar(50)",
+          "pk": false,
+          "nullable": true,
+          "description": "사용자명 — 코드→이름 해석의 기본 출력 컬럼"
+        },
+        {
+          "name": "empName",
+          "type": "nvarchar(50)",
+          "pk": false,
+          "nullable": true,
+          "description": "사원명 — an_empNo로 join했을 때 이 컬럼 사용"
+        },
+        {
+          "name": "empNo",
+          "type": "varchar(20)",
+          "pk": false,
+          "nullable": true,
+          "description": "사번 — TGW_ApprovalNote.an_empNo의 join 키"
+        },
+        {
+          "name": "logDept",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "부서코드"
+        },
+        {
+          "name": "useFlag",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "사용여부"
+        }
+      ]
+    },
+    {
+      "name": "dbo.TCD_Customer",
+      "table_group": "master",
+      "description": "거래처 마스터 — 거래처코드로 이름을 해석할 때 join. TGW_WorkBoard.wb_CustCD 등 거래처코드 컬럼의 기준 테이블.",
+      "columns": [
+        {
+          "name": "cu_custCd",
+          "type": "varchar(20)",
+          "pk": true,
+          "nullable": false,
+          "description": "거래처코드 (PK) — 조인 키"
+        },
+        {
+          "name": "cu_custNm",
+          "type": "nvarchar(100)",
+          "pk": false,
+          "nullable": true,
+          "description": "거래처명 — 코드→이름 해석의 기본 출력 컬럼"
+        },
+        {
+          "name": "cu_custFg",
+          "type": "char(1)",
+          "pk": false,
+          "nullable": true,
+          "description": "거래처구분"
+        },
+        {
+          "name": "cu_sDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "거래개시일"
+        },
+        {
+          "name": "cu_eDt",
+          "type": "datetime",
+          "pk": false,
+          "nullable": true,
+          "description": "거래종료일 (만료된 거래처 필터링 시 사용)"
+        },
+        {
+          "name": "cu_natCd",
+          "type": "varchar(10)",
+          "pk": false,
+          "nullable": true,
+          "description": "국가코드"
+        }
+      ]
+    }
+  ]
+}
