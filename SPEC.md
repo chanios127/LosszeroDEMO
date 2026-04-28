@@ -1,6 +1,6 @@
 # LLM Harness — 시스템 명세서
 
-> 최종 갱신: 2026-04-16 (Phase 5 완료 시점)
+> 최종 갱신: 2026-04-17 (Phase 6 완료 시점)
 
 MSSQL ERP/MES/그룹웨어 데이터를 자연어로 조회하고 시각화하는 에이전트 시스템.
 
@@ -27,19 +27,21 @@ LosszeroDEMO/
 │   ├── main.py                          # FastAPI 엔트리, 모든 라우터
 │   ├── pyproject.toml                   # uv 의존성
 │   ├── uv.lock
+│   ├── prompts/
+│   │   └── system_base.md               # LLM 기본 시스템 프롬프트 (lru_cache 로드)
 │   ├── agent/
 │   │   ├── events.py                    # SSE 이벤트 타입 6종
 │   │   └── loop.py                      # AgentLoop (ReAct 멀티턴, 10턴 + continue)
 │   ├── llm/
-│   │   ├── base.py                      # LLMProvider ABC, Message, ToolSchema
+│   │   ├── base.py                      # LLMProvider ABC + load_base_system_prompt()
 │   │   ├── __init__.py                  # Provider 팩토리
 │   │   ├── claude.py                    # Anthropic 스트리밍
-│   │   └── lm_studio.py                # OpenAI 호환 + <execute_sql> fallback
+│   │   └── lm_studio.py                 # OpenAI 호환 + Harmony 마커 정규화
 │   ├── tools/
 │   │   ├── base.py                      # Tool ABC
-│   │   ├── list_tables.py              # 테이블명 조회 + 도메인 분류
-│   │   ├── db_query.py                  # SELECT 전용 (DML/DDL regex 차단)
-│   │   └── sp_call.py                   # SP 화이트리스트 실행
+│   │   ├── db_query/                    # 패키지 (tool.py + description.md)
+│   │   ├── list_tables/                 # 패키지
+│   │   └── sp_call/                     # 패키지
 │   ├── db/
 │   │   └── connection.py                # PyodbcPool + asyncio wrapper
 │   ├── domains/
@@ -47,38 +49,46 @@ LosszeroDEMO/
 │   │   └── __init__.py
 │   └── schema_registry/
 │       └── domains/
-│           └── groupware.json           # GW 도메인 (13 tables, 6 groups)
+│           └── groupware.json           # GW 도메인
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx                      # CSS-hidden 라우터 (탭 전환 세션 유지)
-│   │   ├── main.tsx
-│   │   ├── index.css                    # Tailwind 지시자
-│   │   ├── types/
-│   │   │   └── events.ts                # AgentEvent, ChatMessage, ResultEntry
-│   │   ├── pages/
-│   │   │   ├── DashboardPage.tsx        # 허브 + 도메인 수 실시간 표시
-│   │   │   ├── DataQueryPage.tsx        # 직접 SQL 에디터 (LLM 없음)
-│   │   │   ├── AgentChatPage.tsx        # 대화형 + 사이드바 + 인라인 차트
-│   │   │   └── UIBuilderPage.tsx        # 3단계 위저드 (데이터→시각화→위젯)
-│   │   ├── components/
-│   │   │   ├── AppShell.tsx             # 사이드바(208px↔56px) + 헤더
-│   │   │   ├── ChatInput.tsx            # 자연어 입력 (Shift+Enter 줄바꿈)
-│   │   │   ├── MessageThread.tsx        # 마크다운 + <think> 블록 + 인라인 차트
-│   │   │   ├── AgentTrace.tsx           # ToolResultInlineViz + CollapsibleTrace
-│   │   │   ├── ConversationList.tsx     # 대화 사이드바 (검색/rename/삭제/export)
-│   │   │   ├── VizPanel.tsx             # Chart 시각화 (Switchable/Inline)
-│   │   │   ├── ResultsBoard.tsx         # 결과 히스토리 패널 (현재 미사용)
-│   │   │   └── builder/
-│   │   │       ├── DataSourceStep.tsx   # SQL / 자연어 → 데이터 수집
-│   │   │       └── VizSuggestionStep.tsx # LLM 차트 제안 + 미리보기
-│   │   └── hooks/
-│   │       ├── useAgentStream.ts        # SSE + useReducer
-│   │       └── useConversationStore.ts  # localStorage 영속화
+│   │   ├── design/                      # ⬛ 디자인 시스템 (UI primitives, 스타일)
+│   │   │   ├── components/
+│   │   │   │   ├── primitives.tsx       # Button, Dot, cls 유틸
+│   │   │   │   ├── icons.tsx            # SVG 아이콘 라이브러리
+│   │   │   │   ├── TweaksPanel.tsx      # 테마/density/팔레트 설정 UI
+│   │   │   │   ├── AppShell.tsx         # 사이드바 + 헤더 레이아웃
+│   │   │   │   ├── ChatInput.tsx
+│   │   │   │   ├── MessageThread.tsx
+│   │   │   │   ├── AgentTrace.tsx
+│   │   │   │   ├── VizPanel.tsx
+│   │   │   │   ├── ConversationList.tsx
+│   │   │   │   └── ResultsBoard.tsx
+│   │   │   ├── index.css                # Tailwind + OKLCH 컬러 시스템 (CSS 변수)
+│   │   │   └── types/
+│   │   │       └── events.ts            # AgentEvent, ChatMessage, ResultEntry
+│   │   │
+│   │   └── framework/                   # ⬛ 비즈니스 로직 + 페이지
+│   │       ├── App.tsx                  # CSS-hidden 라우터
+│   │       ├── main.tsx                 # 엔트리 (design/index.css import)
+│   │       ├── pages/
+│   │       │   ├── DashboardPage.tsx
+│   │       │   ├── DataQueryPage.tsx    # 직접 SQL 에디터 (LLM 없음)
+│   │       │   ├── AgentChatPage.tsx    # 대화형 + 인라인 차트
+│   │       │   └── UIBuilderPage.tsx    # 3단계 위저드
+│   │       ├── components/
+│   │       │   └── builder/
+│   │       │       ├── DataSourceStep.tsx
+│   │       │       └── VizSuggestionStep.tsx
+│   │       └── hooks/
+│   │           ├── useAgentStream.ts    # SSE + useReducer (스트림 재연결 지원)
+│   │           ├── useConversationStore.ts  # localStorage 영속화
+│   │           └── useTweaks.ts         # 테마/팔레트 + CSS 변수 동적 주입
 │   ├── package.json
 │   ├── vite.config.ts                   # 5173 포트, /api → 127.0.0.1:8000 프록시
 │   ├── tsconfig.json
-│   └── tailwind.config.ts
+│   └── tailwind.config.ts               # design/framework 경로 포함
 │
 ├── .claude/skills/                      # Claude Code 세션 전용 도구 (런타임 미사용)
 │   ├── LosszeroDB_3Z_MES/               # MES DB (DB0=표준, DB1=비즈니스)
@@ -91,6 +101,26 @@ LosszeroDEMO/
 ├── DESIGN.md / DESIGN-phase*.md         # 과거 설계 기록
 └── .env.example
 ```
+
+### 2.1 design / framework 분리 원칙
+
+| 레이어 | 역할 | 의존성 |
+|--------|------|--------|
+| `src/design/` | 순수 UI primitives, 컴포넌트, 스타일, 이벤트 타입 | 비즈니스 로직 없음, framework 의존 X |
+| `src/framework/` | 페이지, 라우팅, 훅(SSE/저장소/테마 적용), 비즈니스 컴포넌트 | design을 import해서 사용 |
+
+design 레이어는 단독으로 다른 프로젝트에 이식 가능. framework는 도메인 특화.
+
+### 2.2 Backend tools 패키지 구조
+
+각 도구는 단일 파일이 아닌 **패키지**로 분리:
+```
+tools/db_query/
+├── __init__.py              # from .tool import DBQueryTool
+├── tool.py                  # 실제 클래스 구현
+└── description.md           # 도구 설명 (LLM에 전달, 외부 편집 가능)
+```
+이로써 도구별 프롬프트/설명을 코드와 분리하여 LLM 튜닝 시 코드 변경 불필요.
 
 ---
 
@@ -179,8 +209,10 @@ Step 3: 위젯 저장 (Phase 6 예정)
 | GET | `/api/domains` | 등록 도메인 목록 | — |
 | POST | `/api/sql` | 직접 SQL 실행 (LLM 없음) | `{sql: string}` |
 | POST | `/api/query` | 에이전트 실행 시작 | `{query, session_id?}` |
-| GET | `/api/stream/{stream_key}` | SSE 이벤트 스트림 | — |
+| GET | `/api/stream/{stream_key}` | SSE 이벤트 스트림 (재연결 지원) | — |
+| GET | `/api/stream_status/{stream_key}` | 스트림 존재/완료 여부 확인 | — |
 | POST | `/api/continue/{stream_key}` | 10턴 초과 승인 | `{proceed: bool}` |
+| POST | `/api/cancel/{session_id}` | 진행 중 작업 취소 | — |
 | DELETE | `/api/session/{session_id}` | 세션 정리 | — |
 | POST | `/api/suggest_viz` | 데이터 → 차트 추천 | `{sample: [...]}` |
 | POST | `/api/generate_aggregation_sql` | 자연어 → T-SQL | `{prompt, domain?}` |
@@ -254,12 +286,23 @@ Step 3: 위젯 저장 (Phase 6 예정)
 
 ## 7. LLM Provider
 
-| Provider | 연결 | Tool Calling | Fallback |
-|----------|------|-------------|----------|
+| Provider | 연결 | Tool Calling | Fallback / 정규화 |
+|----------|------|-------------|------------------|
 | Claude | Anthropic SDK `messages.stream()` | 네이티브 tool_use | — |
-| LM Studio | httpx `/v1/chat/completions` | 네이티브 (모델 의존) | HTTP 400 시 `<execute_sql>...</execute_sql>` 추출 |
+| LM Studio | httpx `/v1/chat/completions` | 네이티브 (모델 의존) | HTTP 400 시 `<execute_sql>...</execute_sql>` 추출 + Harmony 마커 정규화 |
 
-**시스템 프롬프트**: 고정 기본 + `domain_to_context()` 동적 합성. system role 메시지는 각 provider가 적절히 병합.
+### 7.1 시스템 프롬프트 구성
+```
+[base prompt]                       ← backend/prompts/system_base.md (lru_cache)
++ [domain schema (matched domain)]  ← domains/loader.domain_to_context()
++ [tool descriptions]               ← tools/{name}/description.md
+```
+- `system_base.md`: 도메인 무관 핵심 규칙(반-환각, 코드→이름 조인, 시각화 규칙 등)
+- 도메인 매칭 시 해당 도메인의 테이블/SP를 시스템 메시지에 추가
+- 각 도구의 description은 외부 .md 파일로 분리 → 코드 변경 없이 튜닝 가능
+
+### 7.2 Harmony 마커 정규화 (LM Studio)
+일부 모델이 출력하는 `<|channel|>thought`, `<|channel|>analysis`, `<|channel|>final`, `<|end|>` 등의 토큰을 `<think>...</think>` 표준 형식으로 스트리밍 안전하게 변환 (`_HarmonyTransformer`).
 
 ---
 
@@ -376,5 +419,6 @@ Claude Code 세션 자동 로드. **런타임 백엔드와 분리**.
 | 3 | HITL 승인 시스템 도입 후 제거, continue_prompt 재도입 |
 | 4 | schema_registry 통합 + 구조 일원화 + `/api/domains` |
 | 5 | 대화 관리(localStorage), tool_result 인라인 차트, UI Builder 스캐폴딩 |
+| 6 | design/framework 분리, tools 패키지화, prompts 외부화, Harmony 정규화, 디자인 토큰(OKLCH/density/팔레트), 스트림 재연결 |
 
 상세한 미이행 항목은 [ROADMAP.md](./ROADMAP.md) 참조.

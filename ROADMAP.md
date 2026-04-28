@@ -1,8 +1,18 @@
 # LLM Harness — 미이행 로드맵
 
-> 최종 갱신: 2026-04-16 (Phase 5 종료 시점)
+> 최종 갱신: 2026-04-17 (Phase 6 종료 시점)
 
-현재 SPEC.md에 정의된 기능은 Phase 5까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+현재 SPEC.md에 정의된 기능은 Phase 6까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+
+## ✅ Phase 6에서 처리됨 (이전 ROADMAP의 일부)
+
+- **프론트엔드 design/framework 분리** — UI primitives와 비즈니스 로직 분리
+- **디자인 토큰 시스템** — OKLCH 컬러, density 변수, TweaksPanel
+- **백엔드 tools 패키지화** — 각 도구별 description.md 분리
+- **시스템 프롬프트 외부화** — `backend/prompts/system_base.md` (lru_cache)
+- **LM Studio Harmony 마커 정규화** — `<|channel|>` → `<think>`
+- **스트림 재연결** — `GET /api/stream_status/{key}`, `POST /api/cancel/{session_id}`
+- **이슈 #2 (LM Studio fallback)** — 부분 해결 (Harmony 정규화 추가)
 
 ---
 
@@ -216,23 +226,22 @@
 
 ---
 
-## 📌 커밋 이력 스냅샷 (2026-04-16 기준)
+## 📌 커밋 이력 스냅샷 (2026-04-17 기준)
 
 ```
+[Phase 6 후속 커밋들 — 아래 분할 커밋 참조]
+52763db Update SPEC.md + ROADMAP.md for Phase 5 handoff
 4a083e8 Phase 5: Conversation management + UI Builder scaffold
 79e7e21 Add /api/sql direct endpoint, remove LLM from DataQuery
 493fbf4 Separate DataQuery (direct SQL) from AgentChat (conversation)
-3fd431e Update docs + fix tab session persistence
+5440a90 Update docs + fix tab session persistence
+5189ebc chore: __pycache__ git 추적 제거 및 .gitignore 정리
+82e2393 fix: 스트리밍 중 유저 스크롤 방해 문제 수정
 0749070 Unify domain registry to schema_registry/domains/*.json
 28d980c Add modular dashboard shell with sidebar navigation
 8041383 Add dashboard layout with results history
 9998fe8 Add visualization guidance to system prompts
 b96c6af Add continue_prompt HITL for max_turns extension
 4684a18 Split domain registry + fix intermediate result bug
-2a80224 logging
-1eaa76f domain_mapping
-64a4101 thinking_block_merged
-fd76f42 locallm_launch
-8be5ef1 README 수정
-e9c6ee9 Initial commit
+... (이전)
 ```

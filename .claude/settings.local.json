@@ -110,7 +110,31 @@
       "mcp__Claude_Preview__preview_start",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('domain:', d.get\\('domain'\\)\\); print\\('tables:', len\\(d.get\\('tables',[]\\)\\)\\); print\\('SPs:', len\\(d.get\\('stored_procedures',[]\\)\\)\\); print\\('keywords:', d.get\\('keywords',[]\\)\\); print\\('table_groups:', list\\(d.get\\('table_groups',{}\\).keys\\(\\)\\)\\)\")",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(pnpm tsc *)",
+      "Bash(pnpm tailwindcss *)",
+      "Bash(pnpm list *)",
+      "Bash(curl -s http://localhost:5173/src/design/index.css)",
+      "Bash(curl -s http://localhost:5174/src/design/index.css)",
+      "Bash(taskkill //PID 36056 //F)",
+      "Bash(python -c ' *)",
+      "Bash(md-to-pdf \"/c/Users/chanios127/Documents/linear algebra/Ch 1~2.4 Review & CatchUp.md\" --config-file \"./md-config.js\")",
+      "Bash(mv \"/c/Users/chanios127/Documents/linear algebra/Ch 1~2.4 Review & CatchUp.pdf\" \"/c/Users/chanios127/Documents/pdf-comparison/CatchUp.mdtopdf.pdf\")",
+      "Bash(md-to-pdf \"/c/Users/chanios127/Documents/linear algebra/Review & CatchUp 명제 핵심 논증.md\" --config-file \"./md-config.js\")",
+      "Bash(fc-list)",
+      "Bash(pandoc \"Ch 1~2.4 Review & CatchUp.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/CatchUp.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V geometry:margin=1in)",
+      "Bash(pandoc \"Review & CatchUp 명제 핵심 논증.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/논증.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V geometry:margin=1in)",
+      "Bash(pandoc \"Review & CatchUp 명제 핵심 논증.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/nonjeung-temp.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V mainfontfallback=\"Segoe UI Symbol\" -V geometry:margin=1in)",
+      "Bash(pandoc \"Ch 1~2.4 Review & CatchUp.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/CatchUp.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V mainfontfallback=\"Segoe UI Symbol\" -V geometry:margin=1in)",
+      "Bash(pandoc \"Ch 1~2.4 Review & CatchUp.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/CatchUp.docx\")",
+      "Bash(pandoc \"Review & CatchUp 명제 핵심 논증.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/nonjeung.docx\")",
+      "Bash(grep -n '^# 직사각\\\\|^## Part 2\\\\|^## $C\\(A\\) \\\\\\\\neq' '/c/Users/chanios127/Documents/linear algebra/Review & CatchUp 명제 핵심 논증.md')",
+      "Bash(grep -n \"C\\(A\\) \\\\\\\\\\\\\\\\neq\" \"/c/Users/chanios127/Documents/linear algebra/Review & CatchUp 명제 핵심 논증.md\")",
+      "Bash(rm -f \"/c/Users/chanios127/Documents/pdf-comparison/논증.pandoc.pdf\" \"/c/Users/chanios127/Documents/pdf-comparison/nonjeung-temp.pandoc.pdf\")",
+      "Bash(pandoc \"Review & CatchUp 명제 핵심 논증.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/nonjeung.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V geometry:margin=1in)",
+      "Bash(pandoc \"Review & CatchUp 명제 핵심 논증.md\" -o \"/c/Users/chanios127/Documents/pdf-comparison/nonjeung2.pandoc.pdf\" --pdf-engine=xelatex -V mainfont=\"Noto Sans CJK KR\" -V CJKmainfont=\"Noto Sans CJK KR\" -V geometry:margin=0.8in -V fontsize=10pt -V linestretch=1.15)",
+      "Bash(pdfinfo \"/c/Users/chanios127/Documents/pdf-comparison/논증.pandoc.pdf\")",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }
