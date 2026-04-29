@@ -7,6 +7,7 @@ from domains.loader import (
     get_domains_summary,
     MODULE_DOMAIN_MAP,
 )
+from domains.parser import build_select
 
 __all__ = [
     "load_all_domains",
@@ -16,4 +17,5 @@ __all__ = [
     "is_sp_whitelisted",
     "get_domains_summary",
     "MODULE_DOMAIN_MAP",
+    "build_select",
 ]

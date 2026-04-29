@@ -1,4 +1,4 @@
-"""Domain registry v3 — loads schema_registry/domains/*.json files."""
+"""Domain registry v3 — loads schema_registry/domains/*.json files and directories."""
 from __future__ import annotations
 
 import json
@@ -87,8 +87,41 @@ def _registry_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "schema_registry" / "domains"
 
 
+def _load_directory_domain(dir_path: Path) -> DomainSpec:
+    """Load domain from a directory with meta.json + tables.json + joins.json + stored_procedures.json."""
+    meta_f = dir_path / "meta.json"
+    if not meta_f.exists():
+        raise FileNotFoundError(f"meta.json missing in domain directory '{dir_path.name}'")
+
+    tables_f = dir_path / "tables.json"
+    if not tables_f.exists():
+        raise FileNotFoundError(f"tables.json missing in domain directory '{dir_path.name}'")
+
+    with open(meta_f, encoding="utf-8") as fh:
+        spec: DomainSpec = json.load(fh)
+
+    with open(tables_f, encoding="utf-8") as fh:
+        spec["tables"] = json.load(fh).get("tables", [])
+
+    joins_f = dir_path / "joins.json"
+    if joins_f.exists():
+        with open(joins_f, encoding="utf-8") as fh:
+            spec["joins"] = json.load(fh).get("joins", [])
+    else:
+        spec["joins"] = []
+
+    sp_f = dir_path / "stored_procedures.json"
+    if sp_f.exists():
+        with open(sp_f, encoding="utf-8") as fh:
+            spec["stored_procedures"] = json.load(fh).get("stored_procedures", [])
+    else:
+        spec["stored_procedures"] = []
+
+    return spec
+
+
 def load_all_domains(base_dir: str | Path | None = None) -> list[DomainSpec]:
-    """Load all *.json domain files from schema_registry/domains/."""
+    """Load all domain specs from schema_registry/domains/ (*.json files and directories)."""
     global _domains
     if _domains:
         return _domains
@@ -98,6 +131,7 @@ def load_all_domains(base_dir: str | Path | None = None) -> list[DomainSpec]:
         logger.warning("Schema registry not found: %s", d)
         return []
 
+    # Single-file domains (backward compat)
     for f in sorted(d.glob("*.json")):
         try:
             with open(f, encoding="utf-8") as fh:
@@ -113,6 +147,24 @@ def load_all_domains(base_dir: str | Path | None = None) -> list[DomainSpec]:
             )
         except Exception as exc:
             logger.error("Failed to load %s: %s", f, exc)
+
+    # Directory-based domains
+    for sub in sorted(d.iterdir()):
+        if sub.is_dir() and (sub / "meta.json").exists():
+            try:
+                spec = _load_directory_domain(sub)
+                _domains.append(spec)
+                logger.info(
+                    "Domain loaded: %s (%s) - %d tables, %d joins, %d SPs from %s/",
+                    spec.get("domain"),
+                    spec.get("display_name"),
+                    len(spec.get("tables", [])),
+                    len(spec.get("joins", [])),
+                    len(spec.get("stored_procedures", [])),
+                    sub.name,
+                )
+            except Exception as exc:
+                logger.error("Failed to load domain dir %s: %s", sub, exc)
 
     return _domains
 
@@ -227,6 +279,29 @@ def domain_to_context(domain: DomainSpec) -> str:
                     desc = j.get("description", "")
                     lines.append(f"- → {target} ON `{on}`" + (f" — {desc}" if desc else ""))
 
+    # Top-level joins (directory-based domains)
+    top_joins = domain.get("joins", [])
+    if top_joins:
+        from domains.parser import JOIN_TYPE_MAP
+
+        lines.append("\n### Join Relationships")
+        for j in top_joins:
+            jtype = JOIN_TYPE_MAP.get(j.get("join_type", "L"), "LEFT")
+            from_t = j.get("from_table", "")
+            to_t = j.get("to_table", "")
+            desc = j.get("description", "")
+            on_parts = []
+            for fc, tc, op in zip(
+                j.get("from_columns", []),
+                j.get("to_columns", []),
+                j.get("operators", []),
+            ):
+                on_parts.append(f"{from_t}.{fc} {op} {to_t}.{tc}")
+            on_str = " AND ".join(on_parts)
+            lines.append(f"- {on_str} ({jtype})" + (f" -- {desc}" if desc else ""))
+        lines.append("")
+        lines.append("Use these join relationships when building queries that span multiple tables.")
+
     lines.append("")
     lines.append(
         "Use ONLY the tables and stored procedures listed above. "
@@ -270,6 +345,7 @@ def get_domains_summary() -> list[dict]:
             "display_name": d.get("display_name", ""),
             "db": d.get("db", ""),
             "table_count": len(d.get("tables", [])),
+            "join_count": len(d.get("joins", [])),
             "sp_count": len(d.get("stored_procedures", [])),
             "table_groups": list(d.get("table_groups", {}).keys()),
             "keywords": d.get("keywords", [])[:5],
