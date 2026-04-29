@@ -277,3 +277,75 @@ final (인라인 ReportContainer 또는 일반 답변)
 - **충돌 발생 시 해결 우선순위**: 1) 우회 (EnrichedChatMessage 같은 framework 측 확장) → 머지 가능. 2) 충돌 자체를 구조적 리팩터로 해소 (events.ts 도메인 분리 같은) → 미래 충돌도 예방.
 - **잠금 추가/만료 시점**: supervisor가 본 §8 표를 갱신.
 
+---
+
+## 9. Phase 9 클로즈 (2026-04-29)
+
+### 9.6 — SubAgentProgress 위젯 (완료, Sonnet 4.5 파일럿)
+
+- 머지 커밋: `--no-ff` merge of `agent/front-view` (1 commit)
+- 신설: `frontend/src/design/components/SubAgentProgress.tsx` — `deriveStages` (events → ordered Stage[]), 스트리밍 중 vertical card with IconSpinner + Dot pulse + latestStage hint, 종료 시 1줄 collapsed (IconCheck + name list)
+- 수정: `frontend/src/design/components/MessageThread.tsx:235-241` — AssistantBubble 내부 마운트 (CollapsibleTrace 위, ThinkBlock 아래)
+- 검증: `pnpm exec tsc --noEmit` 0 error, design 내부 import only
+
+### Phase 9 전체 요약 (9.1 ~ 9.6 완료)
+
+3-stage sub-agent pipeline 도입 완료:
+- AgentLoop(outer ReAct) ⊃ db_query / list_tables / sp_call (SubAgent1) + build_report (SubAgent2) + build_view (SubAgent3)
+- LLM 자율 라우팅 (시스템 프롬프트 가이드 + description.md 명세)
+- ReportSchema → ViewBundle → 인라인 ReportContainer 렌더 chain
+- SSE subagent_* 이벤트 + UI multi-stage progress (양 가시성)
+- Persistence: 메시지 메타데이터 (reportSchema + viewBundle) localStorage 보존
+- Debug Fix 1·2·3·4 + 보강 A·B 모두 흡수 머지
+
+### Sonnet 4.5 파일럿 평가 (9.6 케이스 기준)
+
+| 항목 | 결과 |
+|---|---|
+| 코드 품질 | Opus 동등 |
+| tsc 0 error | ✅ |
+| 영역 침범 | 0 |
+| Props 인터페이스 명세 충실도 | ✅ |
+| CSS 토큰 사용 | ✅ |
+| 기존 컴포넌트 재사용 (Dot, IconCheck/Spinner) | ✅ |
+| 자율 결정 영역 처리 | OK (배치/layout/collapsed 모두 합리적) |
+| 회신 §자율 결정 보고 | 🟡 빈칸 (Opus는 통상 채움) |
+| Type union 전 값 흡수 (`error` 상태) | 🟡 누락 (running/complete만 구현) |
+| 명세 한글 매핑 흡수 | 🟡 누락 (영문 그대로) |
+| 영역 권한 자율 인지 | ✅ "본 세션 권한 반납 권장" 회신 |
+
+**결론**: Sonnet 4.5는 90% 명세 충실 + 코드 품질 동등. **향후 Sonnet 위임 시 명세 보강 포인트**:
+1. "회신 §자율 결정 사항을 반드시 채울 것 (이유 1줄)" 명시 강화
+2. "박제된 type union의 모든 값을 처리할 것" 명시 (예: error 상태 case)
+3. "사용자 가시 텍스트 명세(한글 매핑 등)는 cosmetic이라도 명세대로" 명시
+
+향후 운영: 
+- 단순 영역 (UI hookup, 단일 파일 작업) → Sonnet
+- 복잡한 cross-file refactor / 영역 충돌 우회 판단 / 패턴 추출 → Opus
+- supervisor / Debug → Opus 유지
+
+### Phase 9 종료 후속 작업 (별도 사이클)
+
+1. **AS현안 4턴 통합 회귀** — supervisor/사용자 수동 검증. Fix 1·2·3·4 + 한글 가드 종합 효과 확인:
+   - Q3 SQL이 `wb_Title`/`wb_reqDt`/`wb_emFg` 사용 (한글 가드 효과)
+   - 모든 턴 system_total_len > 0 (Fix 1 sticky)
+   - tool_use/tool_result 페어 보존 (Fix 2 history)
+   - 행수 meta가 LLM에 도달 (Fix 3)
+   - 환각 시 Fix 4 + 한글 가드 ValueError → LLM 회복 (도메인 schema 재참조)
+2. **9.6 부분 명세 미흡수 후속** (선택): SubAgentProgress의 error 상태 + 한글 stage 매핑. supervisor 직접 또는 별도 Front/View 사이클.
+3. **ROADMAP 후보**:
+   - HITL 게이트 (provider 분기) — db_query SQL 승인 게이트 검토
+   - ReportSchema 점진 블록 (`table`, `comparison`, `kpi_grid`)
+   - View 카탈로그 확장 (`TimeSeriesPanel`, `HeatmapCalendar`)
+   - SubAgent 카탈로그화 (anomaly_detector 등)
+
+### Phase 9 잠금 만료
+
+§8 Locks Registry의 "9.x 종료 시" 만료 항목들은 Phase 9 클로즈 시점에 일괄 해제 또는 후속 phase로 이월:
+- `ReportSchema` / `ReportBlock` / `DataRef` — 운영 안정성 검증 후 만료
+- `ViewBundle` / `ViewBlockSpec` — 동상
+- `BuildReportTool` / `BuildViewTool` 인터페이스 — 동상
+- `design/components/report/` Front/View 한시 권한 — Phase 10 시점에 Claude Design 재이양 vs Front/View 영구 결정
+
+본 잠금 만료 결정은 AS현안 회귀 통과 후 별도 사이클로 처리.
+
