@@ -140,3 +140,33 @@ final (인라인 ReportContainer 또는 일반 답변)
 
 ### 참조
 - Debug 세션의 평가 보고는 본 사이클 종료 후 별도 보존되지 않음 (인수인계는 본 §6에 압축됨). 필요 시 git log에서 Debug 사이클 commit 메시지 또는 본 §6을 ground truth로.
+
+---
+
+## 7. Phase 9 진척 — Sub-phase 완료 기록
+
+### 9.1 — View 카탈로그 5종 + ReportContainer (완료, 2026-04-29)
+
+- 머지 커밋: `--no-ff` merge of `agent/front-view` into main
+- 신설 파일:
+  - `frontend/src/design/types/report.ts` — **locked schema** (9.x 동결)
+  - `frontend/src/design/components/report/{MetricCard,ChartBlock,MarkdownBlock,HighlightCard,ReportContainer}.tsx`
+  - `frontend/src/design/components/report/__fixtures__/sample.json`
+  - `frontend/src/framework/pages/ReportDemoPage.tsx` (NAV 노출, `/report-demo` 라우트)
+- 함께 수정: `design/components/AppShell.tsx` (Page union + NAV_ITEMS)
+- 부수 fix: `design/components/primitives.tsx:148` StatDelta down→`--danger` (별도 커밋)
+
+#### 박제된 결정 (9.2/9.3/9.5 위임 시 인용)
+
+1. **ReportSchema / DataRef 동결** — `frontend/src/design/types/report.ts` 형식이 9.x 인터페이스 계약. 9.2 BackEnd Infra가 pydantic 모델로 mirror하되 형식 변경 금지. 변경 필요 시 supervisor가 모든 9.x in-flight 위임 정지 후 재합의.
+2. **영역 권한 — Front/View 한시 권한** — 9.x 기간 동안 `frontend/src/design/components/report/` 컴포넌트의 props/스타일 변경은 Front/View 위임으로 처리. (Claude Design은 optional agent. 9.x 종료 후 권한 정책 재검토.)
+3. **데모 페이지 유지** — `/report-demo` NAV 노출 유지. 9.5에서 실제 ReportContainer가 AgentChat에 인라인 들어간 후, 데모 페이지를 fixture 카탈로그/QA 페이지로 정식 운영.
+4. **DataRef ref-mode hydration 책임** — 9.5 위임 시 결정 (persistence가 ref→embed 변환을 수행 vs ChartBlock이 ref_id로 fetch). 본 단계에선 placeholder만 렌더.
+5. **chart hint props (`x` / `y` / `group_by`)** — 박제만 됨, 미사용. SwitchableViz API에 xField / yFields / groupBy 추가는 9.4 후속 (ROADMAP 또는 9.4 위임 명세에 추가 검토).
+
+#### 9.2 위임 시 헤드업
+- `frontend/src/design/types/report.ts` 그대로 첨부 → `backend/tools/build_report/schema.py` pydantic 모델로 1:1 mirror
+- DataRef 두 모드 직렬화 형식 그대로
+- `chart.data_ref`는 `data_refs[]` 인덱스(int)
+- worktree 분리 강제 (`git worktree add ../LosszeroDEMO-backend-infra -b agent/backend-infra origin/main`)
+
