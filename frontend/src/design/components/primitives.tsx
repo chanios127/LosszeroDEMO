@@ -145,7 +145,7 @@ export function StatDelta({ trend, children }: StatDeltaProps) {
     trend === "up"
       ? "var(--success)"
       : trend === "down"
-        ? "var(--success)"
+        ? "var(--danger)"
         : "var(--text-faint)";
   const arrow = trend === "up" ? "↑" : trend === "down" ? "↓" : "·";
   return (
