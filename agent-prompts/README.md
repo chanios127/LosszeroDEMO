@@ -71,6 +71,17 @@ git checkout -b agent/<role>     # 없으면 생성, 있으면: git switch agent
 
 이 규칙은 각 cold-start 프롬프트의 §2(시작 절차) / §5(작업 중 규칙)에 박제되어 있어, **사용자는 매번 브랜치 신경 쓸 필요 없다**. 세션이 자율로 처리한다.
 
+### 동시 세션 작업 시 워크트리 충돌 주의 (Phase 8 사이클에서 발생)
+
+같은 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)를 여러 Claude Code 세션이 공유하면 git 브랜치가 1개만 checkout 가능하므로 분기·커밋이 꼬일 수 있다. 실제 사례: db-domain과 backend-infra 세션이 동시에 분기·커밋하다가 한쪽 final commit이 잘못된 브랜치 위에 안착, cherry-pick + 강제 정정 필요했음.
+
+**완화책 (supervisor 정책)**:
+- **권장 1: 순차 진행** — 위임을 동시에 보내더라도 한 세션이 push까지 끝낸 뒤 다음 세션 시작 (Plan에서 "병렬"로 적혀 있어도 실행은 순차).
+- **권장 2: git worktree 분리** — 각 agent 세션마다 `git worktree add ../<role>-wt agent/<role>` 로 워크트리 자체를 분리 (각 세션이 독립 디렉토리에서 작업).
+- 머지·검증·정리 부담은 supervisor가 흡수.
+
+agent 측에서는 **첫 상황보고 시 `git branch --show-current` 값**과 **`git status`의 의외 modified 항목**을 supervisor에 보고해서 supervisor가 충돌을 조기 감지할 수 있도록 한다. 이미 cold-start §2에 박제됨.
+
 ---
 
 ## 종료 시 표준 인수인계 형식 (모든 역할 공통)

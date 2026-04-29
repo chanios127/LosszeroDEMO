@@ -1,6 +1,6 @@
 # LLM Harness — Architecture
 
-> 최종 갱신: 2026-04-29 (Phase 7)
+> 최종 갱신: 2026-04-29 (Phase 8)
 
 ## 개요
 
@@ -175,20 +175,20 @@ domains/groupware/
 
 `meta.json` + `tables.json` 필수, 나머지는 선택. 로더가 4 파일을 단일 DomainSpec으로 병합.
 
-### 신규 joins 스키마 (top-level)
+### joins 스키마 (Phase 8 — compact)
 
 ```json
 {
-  "from_table": "dbo.TGW_AttendList",
-  "to_table":   "dbo.LZXP310T",
-  "join_type":  "L",                // L/R/I/C (대소문자 무시)
-  "from_columns": ["at_UserID"],
-  "to_columns":   ["Uid"],
-  "operators":    ["="],            // 인덱스 1:1, composite key 지원
-  "description":  "사용자 이름 해석 (at_UserID → uName)",
-  "name":         "tgw_attend_list_to_lzxp310_t"   // optional
+  "name":      "attendList2LZXP310T",            // <from>2<to> camelCase, optional
+  "tables":   ["TGW_AttendList", "LZXP310T"],   // 길이 2, dbo prefix 미포함
+  "join_type": "L",                              // L/R/I/C (대소문자 무시)
+  "columns":  [["at_UserID"], ["Uid"]],          // [from_cols, to_cols], composite 지원
+  "operators": ["="],                            // = / <> / > / < / >= / <=
+  "description": "사용자 이름 해석 (at_UserID → uName)"
 }
 ```
+
+dbo 스키마는 본 프로젝트 고정 — 직렬화 / SQL 생성 시점에 코드가 자동 prepend.
 
 ### 작동 방식
 

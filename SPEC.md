@@ -1,6 +1,6 @@
 # LLM Harness — 시스템 명세서
 
-> 최종 갱신: 2026-04-29 (Phase 7 완료 시점)
+> 최종 갱신: 2026-04-29 (Phase 8 완료 시점)
 
 MSSQL ERP/MES/그룹웨어 데이터를 자연어로 조회하고 시각화하는 에이전트 시스템.
 
@@ -251,7 +251,7 @@ Step 3: 위젯 저장 (미구현 — ROADMAP §A 후보)
 
 **위치**: `backend/schema_registry/domains/`
 
-**현재 등록**: `groupware/` (폴더 형식, 15 tables, 20 joins, 7 groups: attendance, task, workboard, approval, meeting, hr_etc, master)
+**현재 등록**: `groupware/` (폴더 형식, 15 tables, 22 joins, 7 groups: attendance, task, workboard, approval, meeting, hr_etc, master)
 
 ### 5.1 도메인 형식 (Phase 7)
 
@@ -273,29 +273,28 @@ domains/groupware/
 
 기존 `domains/<name>.json` 단일 파일도 계속 정상 인식 (테이블 하위 `joins` 포함 구 스키마 유지).
 
-### 5.2 신규 joins 스키마 (top-level)
+### 5.2 joins 스키마 (Phase 8 — compact)
 
 ```json
 {
   "joins": [
     {
-      "name": "tgw_attend_list_to_lzxp310_t",
-      "from_table": "dbo.TGW_AttendList",
-      "to_table":   "dbo.LZXP310T",
-      "join_type":  "L",
-      "from_columns": ["at_UserID"],
-      "to_columns":   ["Uid"],
-      "operators":    ["="],
-      "description":  "사용자 이름 해석 (at_UserID → uName)"
+      "name": "attendList2LZXP310T",
+      "tables":  ["TGW_AttendList", "LZXP310T"],
+      "join_type": "L",
+      "columns": [["at_UserID"], ["Uid"]],
+      "operators": ["="],
+      "description": "사용자 이름 해석 (at_UserID → uName)"
     }
   ]
 }
 ```
 
+- `tables`: 길이 2 고정 배열 `[from, to]`. **dbo 스키마 prefix 미포함** — 직렬화 / SQL 생성 시 코드가 `dbo.` 자동 prepend (본 프로젝트는 dbo 고정).
+- `columns`: 길이 2 외부 배열 `[from_columns, to_columns]`. 내부 배열은 composite key 컬럼들 (인덱스 1:1 매칭).
+- `operators`: `columns[0]` 길이와 동일. `=`/`<>`/`>`/`<`/`>=`/`<=`.
 - `join_type`: `L`/`R`/`I`/`C` (LEFT/RIGHT/INNER/CROSS), 대소문자 무시.
-- `from_columns[i]` ↔ `to_columns[i]` ↔ `operators[i]` — 길이 동일, 인덱스 1:1 매칭. composite key 지원.
-- `operators`: `=`, `<>`, `>`, `<`, `>=`, `<=`.
-- `name`은 optional 디버깅 식별자.
+- `name`: optional 디버깅 식별자. 패턴 `<from>2<to>` (camelCase 축약, T**_ prefix 소거 후 첫 글자 lower; LZXP310T처럼 prefix 없는 마스터는 원형). 충돌 시 `__<firstFromColCamel>` suffix.
 
 ### 5.3 로더 동작
 
@@ -308,12 +307,12 @@ domains/groupware/
 
 `build_select(joins, select_cols=None, use_alias=True) -> str`
 
-- 입력: 신 joins 객체 배열의 부분집합(테이블 사슬). 첫 entry의 `from_table`이 base.
-- 출력: `SELECT ... FROM A LEFT JOIN B ON ... LEFT JOIN C ON ...` SQL 문자열.
-- alias: `use_alias=True`면 A/B/C… 자동 부여. `False`면 full table name.
-- composite ON: `from_columns[i] {operators[i]} to_columns[i]`을 `AND`로 연결.
+- 입력: 신 joins 객체 배열의 부분집합(테이블 사슬). 첫 entry의 `tables[0]`이 base.
+- 출력: `SELECT ... FROM A LEFT JOIN B ON ... LEFT JOIN C ON ...` SQL 문자열. 모든 테이블 참조에 `dbo.` 자동 prepend.
+- alias: `use_alias=True`면 A/B/C… 자동 부여. `False`면 full table name(`dbo.<table>`).
+- composite ON: `columns[0][i] {operators[i]} columns[1][i]`을 `AND`로 연결.
 - CROSS JOIN은 ON 절 없이 생성.
-- 체인 끊김 / 빈 입력 시 `ValueError`.
+- 체인 끊김 / 빈 입력 시 `ValueError`. 구 스키마(`from_table` 등) 입력 시 `KeyError`.
 
 **프론트엔드 연동**: `GET /api/domains` → 요약 dict(`table_count`, `join_count`, `sp_count`, `table_groups`, `keywords[:5]`) → AgentChatPage, DashboardPage 동적 렌더링.
 

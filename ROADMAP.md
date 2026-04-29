@@ -1,8 +1,24 @@
 # LLM Harness — 미이행 로드맵
 
-> 최종 갱신: 2026-04-29 (Phase 7 종료 시점)
+> 최종 갱신: 2026-04-29 (Phase 8 종료 시점)
 
-현재 SPEC.md에 정의된 기능은 Phase 7까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+현재 SPEC.md에 정의된 기능은 Phase 8까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+
+## ✅ Phase 8에서 처리됨 (joins 스키마 가독성 개선 + groupware 보강)
+
+**스키마 단순화** (Phase 7 → Phase 8):
+- 키 4개(`from_table`/`to_table`/`from_columns`/`to_columns`) → 키 2개(`tables`/`columns`)로 압축. 길이 2 외부 배열로 from/to 인덱스 표현.
+- dbo 스키마 prefix 제거 (본 프로젝트는 dbo 고정 — 직렬화 시점에 자동 prepend).
+- `name`은 camelCase 축약 + `<from>2<to>` 패턴. T**_ prefix 소거 후 첫 글자 lower (LZXP310T처럼 prefix 없는 마스터는 원형).
+
+**groupware joins 보강** (20 → 22):
+- `workBoard2taskPlan` — 현안 → 연결된 업무계획 (역방향 추가, parser 도달성 개선).
+- `attendExceptT2attendExcept` — 임시 휴가/기안 ↔ 본 휴가/기안 매칭.
+
+**백엔드 코드**:
+- `backend/domains/parser.py:build_select()` — 신 스키마 키 (`j["tables"]`, `j["columns"]`) 사용. dbo 자동 prepend. 구 스키마는 KeyError로 거부.
+- `backend/domains/loader.py:domain_to_context()` — top-level joins 직렬화 신 스키마 키 참조.
+- self-test 7 cases (구 스키마 rejection 포함).
 
 ## ✅ Phase 7에서 처리됨 (도메인 레지스트리 폴더화 + join 1급화)
 
