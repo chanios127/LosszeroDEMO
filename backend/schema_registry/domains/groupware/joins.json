@@ -1,15 +1,19 @@
 {
   "joins": [
     {
-      "name": "tgw_attend_list_to_tgw_attend_except",
-      "from_table": "dbo.TGW_AttendList",
-      "to_table": "dbo.TGW_AttendExcept",
-      "join_type": "L",
-      "from_columns": [
-        "at_UserID"
+      "name": "attendList2attendExcept",
+      "tables": [
+        "TGW_AttendList",
+        "TGW_AttendExcept"
       ],
-      "to_columns": [
-        "ae_UserID"
+      "join_type": "L",
+      "columns": [
+        [
+          "at_UserID"
+        ],
+        [
+          "ae_UserID"
+        ]
       ],
       "operators": [
         "="
@@ -17,15 +21,19 @@
       "description": "출근기록 → 휴가/기안 내역"
     },
     {
-      "name": "tgw_attend_list_to_lzxp310_t",
-      "from_table": "dbo.TGW_AttendList",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "at_UserID"
+      "name": "attendList2LZXP310T",
+      "tables": [
+        "TGW_AttendList",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "at_UserID"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -33,15 +41,19 @@
       "description": "사용자 이름 해석 (at_UserID → uName)"
     },
     {
-      "name": "tgw_attend_except_to_lzxp310_t",
-      "from_table": "dbo.TGW_AttendExcept",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "ae_UserID"
+      "name": "attendExcept2LZXP310T",
+      "tables": [
+        "TGW_AttendExcept",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "ae_UserID"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -49,15 +61,19 @@
       "description": "신청자 이름 해석 (ae_UserID → uName)"
     },
     {
-      "name": "tgw_attend_except_t_to_lzxp310_t",
-      "from_table": "dbo.TGW_AttendExcept_T",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "ae_UserID"
+      "name": "attendExceptT2LZXP310T",
+      "tables": [
+        "TGW_AttendExcept_T",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "ae_UserID"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -65,15 +81,19 @@
       "description": "신청자 이름 해석 (ae_UserID → uName)"
     },
     {
-      "name": "tgw_task_daily_log_to_lzxp310_t__td_my_uid",
-      "from_table": "dbo.TGW_TaskDailyLog",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "td_myUid"
+      "name": "taskDailyLog2LZXP310T__tdMyUid",
+      "tables": [
+        "TGW_TaskDailyLog",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "td_myUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -81,15 +101,19 @@
       "description": "작성자 이름 해석 (td_myUid → uName)"
     },
     {
-      "name": "tgw_task_daily_log_to_lzxp310_t__td_addr_uid",
-      "from_table": "dbo.TGW_TaskDailyLog",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "td_addrUid"
+      "name": "taskDailyLog2LZXP310T__tdAddrUid",
+      "tables": [
+        "TGW_TaskDailyLog",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "td_addrUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -97,15 +121,19 @@
       "description": "수신자 이름 해석 (td_addrUid → uName) — 작성자 join과 별칭(alias) 분리 필요"
     },
     {
-      "name": "tgw_task_plan_to_tgw_work_board",
-      "from_table": "dbo.TGW_TaskPlan",
-      "to_table": "dbo.TGW_WorkBoard",
-      "join_type": "L",
-      "from_columns": [
-        "tp_WBNO"
+      "name": "taskPlan2workBoard",
+      "tables": [
+        "TGW_TaskPlan",
+        "TGW_WorkBoard"
       ],
-      "to_columns": [
-        "wb_WBNO"
+      "join_type": "L",
+      "columns": [
+        [
+          "tp_WBNO"
+        ],
+        [
+          "wb_WBNO"
+        ]
       ],
       "operators": [
         "="
@@ -113,15 +141,19 @@
       "description": "업무계획 → 연결 AS현안"
     },
     {
-      "name": "tgw_task_plan_to_lzxp310_t",
-      "from_table": "dbo.TGW_TaskPlan",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "tp_myUid"
+      "name": "taskPlan2LZXP310T",
+      "tables": [
+        "TGW_TaskPlan",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "tp_myUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -129,17 +161,21 @@
       "description": "작성자 이름 해석 (tp_myUid → uName)"
     },
     {
-      "name": "tgw_work_board_to_tgw_work_board_tail",
-      "from_table": "dbo.TGW_WorkBoard",
-      "to_table": "dbo.TGW_WorkBoardTail",
-      "join_type": "L",
-      "from_columns": [
-        "wb_WBNO",
-        "wb_revNo"
+      "name": "workBoard2workBoardTail",
+      "tables": [
+        "TGW_WorkBoard",
+        "TGW_WorkBoardTail"
       ],
-      "to_columns": [
-        "wt_WBNO",
-        "wt_revNo"
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_WBNO",
+          "wb_revNo"
+        ],
+        [
+          "wt_WBNO",
+          "wt_revNo"
+        ]
       ],
       "operators": [
         "=",
@@ -148,15 +184,19 @@
       "description": "현안 → 댓글"
     },
     {
-      "name": "tgw_work_board_to_tgw_work_board_plan",
-      "from_table": "dbo.TGW_WorkBoard",
-      "to_table": "dbo.TGW_WorkBoard_Plan",
-      "join_type": "L",
-      "from_columns": [
-        "wb_WBNO"
+      "name": "workBoard2workBoardPlan",
+      "tables": [
+        "TGW_WorkBoard",
+        "TGW_WorkBoard_Plan"
       ],
-      "to_columns": [
-        "wp_WBNo"
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_WBNO"
+        ],
+        [
+          "wp_WBNo"
+        ]
       ],
       "operators": [
         "="
@@ -164,15 +204,19 @@
       "description": "현안 → 작업계획"
     },
     {
-      "name": "tgw_work_board_to_lzxp310_t__wb_req_uid",
-      "from_table": "dbo.TGW_WorkBoard",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "wb_reqUid"
+      "name": "workBoard2LZXP310T__wbReqUid",
+      "tables": [
+        "TGW_WorkBoard",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_reqUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -180,15 +224,19 @@
       "description": "요청자 이름 해석 (wb_reqUid → uName)"
     },
     {
-      "name": "tgw_work_board_to_lzxp310_t__wb_my_uid",
-      "from_table": "dbo.TGW_WorkBoard",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "wb_myUid"
+      "name": "workBoard2LZXP310T__wbMyUid",
+      "tables": [
+        "TGW_WorkBoard",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_myUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -196,15 +244,19 @@
       "description": "담당자 이름 해석 (wb_myUid → uName) — 요청자 join과 별칭 분리 필요"
     },
     {
-      "name": "tgw_work_board_to_tcd_customer",
-      "from_table": "dbo.TGW_WorkBoard",
-      "to_table": "dbo.TCD_Customer",
-      "join_type": "L",
-      "from_columns": [
-        "wb_CustCD"
+      "name": "workBoard2customer",
+      "tables": [
+        "TGW_WorkBoard",
+        "TCD_Customer"
       ],
-      "to_columns": [
-        "cu_custCd"
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_CustCD"
+        ],
+        [
+          "cu_custCd"
+        ]
       ],
       "operators": [
         "="
@@ -212,15 +264,19 @@
       "description": "거래처 이름 해석 (wb_CustCD → cu_custNm)"
     },
     {
-      "name": "tgw_work_board_plan_to_tgw_work_board",
-      "from_table": "dbo.TGW_WorkBoard_Plan",
-      "to_table": "dbo.TGW_WorkBoard",
-      "join_type": "L",
-      "from_columns": [
-        "wp_WBNo"
+      "name": "workBoardPlan2workBoard",
+      "tables": [
+        "TGW_WorkBoard_Plan",
+        "TGW_WorkBoard"
       ],
-      "to_columns": [
-        "wb_WBNO"
+      "join_type": "L",
+      "columns": [
+        [
+          "wp_WBNo"
+        ],
+        [
+          "wb_WBNO"
+        ]
       ],
       "operators": [
         "="
@@ -228,15 +284,19 @@
       "description": "작업계획 → AS현안"
     },
     {
-      "name": "tgw_work_board_plan_to_lzxp310_t",
-      "from_table": "dbo.TGW_WorkBoard_Plan",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "wp_Uid"
+      "name": "workBoardPlan2LZXP310T",
+      "tables": [
+        "TGW_WorkBoard_Plan",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "wp_Uid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -244,15 +304,19 @@
       "description": "담당자 이름 해석 (wp_Uid → uName)"
     },
     {
-      "name": "tgw_work_board_tail_to_tgw_work_board",
-      "from_table": "dbo.TGW_WorkBoardTail",
-      "to_table": "dbo.TGW_WorkBoard",
-      "join_type": "L",
-      "from_columns": [
-        "wt_WBNO"
+      "name": "workBoardTail2workBoard",
+      "tables": [
+        "TGW_WorkBoardTail",
+        "TGW_WorkBoard"
       ],
-      "to_columns": [
-        "wb_WBNO"
+      "join_type": "L",
+      "columns": [
+        [
+          "wt_WBNO"
+        ],
+        [
+          "wb_WBNO"
+        ]
       ],
       "operators": [
         "="
@@ -260,15 +324,19 @@
       "description": "댓글 → AS현안"
     },
     {
-      "name": "tgw_work_board_tail_to_lzxp310_t",
-      "from_table": "dbo.TGW_WorkBoardTail",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "wt_workUid"
+      "name": "workBoardTail2LZXP310T",
+      "tables": [
+        "TGW_WorkBoardTail",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "wt_workUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -276,15 +344,19 @@
       "description": "작성자 이름 해석 (wt_workUid → uName)"
     },
     {
-      "name": "tgw_approval_note_to_lzxp310_t",
-      "from_table": "dbo.TGW_ApprovalNote",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "an_empNo"
+      "name": "approvalNote2LZXP310T",
+      "tables": [
+        "TGW_ApprovalNote",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "empNo"
+      "join_type": "L",
+      "columns": [
+        [
+          "an_empNo"
+        ],
+        [
+          "empNo"
+        ]
       ],
       "operators": [
         "="
@@ -292,15 +364,19 @@
       "description": "기안자 이름 해석 (an_empNo → empName). 주의: 다른 사용자 ID 필드와 달리 Uid가 아닌 empNo(사번)로 join"
     },
     {
-      "name": "tgw_nw_meeting_room_appointments_to_lzxp310_t",
-      "from_table": "dbo.TGW_NWMeetingRoomAppointments",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "myUid"
+      "name": "nwMeetingRoomAppointments2LZXP310T",
+      "tables": [
+        "TGW_NWMeetingRoomAppointments",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "myUid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
@@ -308,20 +384,64 @@
       "description": "예약자 이름 해석 (myUid → uName)"
     },
     {
-      "name": "tgw_physicalchekup_to_lzxp310_t",
-      "from_table": "dbo.TGW_physicalchekup",
-      "to_table": "dbo.LZXP310T",
-      "join_type": "L",
-      "from_columns": [
-        "pc_Uid"
+      "name": "physicalchekup2LZXP310T",
+      "tables": [
+        "TGW_physicalchekup",
+        "LZXP310T"
       ],
-      "to_columns": [
-        "Uid"
+      "join_type": "L",
+      "columns": [
+        [
+          "pc_Uid"
+        ],
+        [
+          "Uid"
+        ]
       ],
       "operators": [
         "="
       ],
       "description": "검진대상 사용자 이름 해석 (pc_Uid → uName)"
+    },
+    {
+      "name": "workBoard2taskPlan",
+      "tables": [
+        "TGW_WorkBoard",
+        "TGW_TaskPlan"
+      ],
+      "join_type": "L",
+      "columns": [
+        [
+          "wb_WBNO"
+        ],
+        [
+          "tp_WBNO"
+        ]
+      ],
+      "operators": [
+        "="
+      ],
+      "description": "현안 → 연결된 업무계획 (역방향). Phase 7은 taskPlan→workBoard만 등록되어 있어 parser가 workBoard에서 출발 시 미도달. 카테고리: 일정·교차 도메인."
+    },
+    {
+      "name": "attendExceptT2attendExcept",
+      "tables": [
+        "TGW_AttendExcept_T",
+        "TGW_AttendExcept"
+      ],
+      "join_type": "L",
+      "columns": [
+        [
+          "ae_SRNO"
+        ],
+        [
+          "ae_SRNO"
+        ]
+      ],
+      "operators": [
+        "="
+      ],
+      "description": "임시 휴가/기안 → 본 휴가/기안 매칭 (ae_SRNO 동일). attendExcept_T는 동일 구조 임시테이블이라 본 테이블과 직접 매칭 가능."
     }
   ]
 }
