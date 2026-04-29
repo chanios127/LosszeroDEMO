@@ -1,9 +1,45 @@
 import { useEffect, useRef, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { useConversationStore } from "../hooks/useConversationStore";
+import type { EnrichedChatMessage } from "../hooks/types";
+import type { ViewBundle } from "../../design/types/view";
 import ChatInput from "../../design/components/ChatInput";
 import MessageThread from "../../design/components/MessageThread";
 import ConversationList from "../../design/components/ConversationList";
+import { ReportContainer } from "../../design/components/report/ReportContainer";
+
+// Phase 9.5 — split message thread around assistant messages that carry a
+// build_view bundle so a ReportContainer renders inline right below the bubble.
+type MessageChunk =
+  | { kind: "thread"; key: string; messages: EnrichedChatMessage[] }
+  | { kind: "report"; key: string; viewBundle: ViewBundle };
+
+function splitMessagesForReports(
+  messages: EnrichedChatMessage[],
+): MessageChunk[] {
+  const chunks: MessageChunk[] = [];
+  let buffer: EnrichedChatMessage[] = [];
+  for (const m of messages) {
+    buffer.push(m);
+    if (m.role === "assistant" && m.viewBundle) {
+      chunks.push({
+        kind: "thread",
+        key: `thread-${m.id}`,
+        messages: [...buffer],
+      });
+      chunks.push({
+        kind: "report",
+        key: `report-${m.id}`,
+        viewBundle: m.viewBundle,
+      });
+      buffer = [];
+    }
+  }
+  if (buffer.length > 0) {
+    chunks.push({ kind: "thread", key: "thread-tail", messages: buffer });
+  }
+  return chunks;
+}
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -276,7 +312,17 @@ function AgentChat({
               </div>
             )}
 
-            <MessageThread messages={messages} />
+            {splitMessagesForReports(messages).map((c) =>
+              c.kind === "thread" ? (
+                <MessageThread key={c.key} messages={c.messages} />
+              ) : (
+                <ReportContainer
+                  key={c.key}
+                  schema={c.viewBundle.schema}
+                  blockSpecs={c.viewBundle.blocks}
+                />
+              ),
+            )}
 
             {pendingContinue && (
               <div className="mt-4 rounded-lg border border-yellow-700/50 bg-yellow-900/20 p-4">
