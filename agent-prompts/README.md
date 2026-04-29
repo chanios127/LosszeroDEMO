@@ -9,9 +9,11 @@
 
 ```
 1. supervisor가 작업을 분해 → 어느 역할에 위임할지 결정
+   (다중 역할 시 코드 블록 N개로 분리 출력 — 한 블록에 두 역할 명세 X)
 2. 사용자가 새 터미널에서 cd → claude 시작
 3. 사용자가 agent-prompts/<role>.md 본문을 첫 입력으로 paste
-4. (선택) supervisor의 위임 명세를 그 아래에 첨부
+4. (선택) supervisor의 위임 명세 코드 블록을 그 아래에 paste
+   (supervisor가 항상 코드 블록 형태로 출력하므로 그대로 복사)
 5. 새 세션 cold start → 상황보고 출력 → supervisor 응답 → 작업 진행
 6. 종료 시 표준 인수인계 markdown 회신 → supervisor가 검수·머지
 ```
@@ -114,6 +116,25 @@ agent 측에서는 **첫 상황보고 시 `git branch --show-current` 값**과 *
 - 영향 안 받은 케이스:
 - 검증 방법:
 ```
+
+---
+
+## `/clear` 안전 시점 (모든 agent 공통)
+
+multi-agent 협업 인프라는 on-disk truth source(cold-start 프롬프트 + 위임 명세 + git history) 우선이라 conversational context는 보조. 다음 4가지 모두 통과하면 agent 세션 `/clear` 안전:
+
+1. 자기 브랜치(`agent/<role>`) push 완료
+2. 종료 인수인계 markdown supervisor에 회신 완료 또는 파일로 저장(`reports/agent-<role>-<date>.md` 등)
+3. 워킹트리 미커밋 실험 코드 0 (있으면 commit 또는 stash)
+4. cold-start 프롬프트(agent-prompts/<role>.md) + 위임 명세 마크다운만으로 동일 작업을 재개할 수 있는지 self-check 통과
+
+**위험 시점 (clear 금지)**:
+- 현재 turn 진행 중인 코드 작성 / 검증 사이클 한복판
+- in-flight `tool_use` → `tool_result` 페어 사이 (Anthropic 메시지 순서 끊기면 400)
+- supervisor에게 답 대기 중인 질문 있음
+- "이번 세션 한정" 임시 합의(예: "이번 9.1만 fixture 형식 X로 가자") 박제 안 한 채로
+
+통과 못 하면: clear 자제하고 컨텍스트 한도까지 사용 권장. 본 체크리스트는 사이클 자연 종료 시점 기준.
 
 ---
 
