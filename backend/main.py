@@ -21,6 +21,7 @@ load_dotenv(_root_env, override=True)
 load_dotenv()
 
 from agent.events import AgentEvent, ErrorEvent, EventType
+from agent.history import normalize_for_persistence, trim_history_safely
 from agent.loop import AgentLoop
 from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
@@ -314,7 +315,7 @@ async def start_query(body: QueryRequest):
     stream_key = f"{session_id}:{uuid.uuid4().hex[:8]}"
     _sessions[stream_key] = []
 
-    history = _conversations[session_id][-MAX_HISTORY:]
+    history = trim_history_safely(_conversations[session_id], MAX_HISTORY)
 
     # Domain matching → schema context injection (sticky per session)
     matched = match_domain(body.query)
@@ -514,7 +515,22 @@ async def start_query(body: QueryRequest):
                         "Session %s: empty final_answer for query %r — storing placeholder",
                         session_id, body.query[:80],
                     )
-            _conversations[session_id].append({"role": "assistant", "content": final_answer})
+            if run_error is None:
+                # Success path: replace with full message history (user + assistant tool_use
+                # + tool result + final assistant) so next turn sees the actual columns/values.
+                final_msgs = loop.get_final_messages()
+                if final_msgs:
+                    _conversations[session_id] = normalize_for_persistence(final_msgs)
+                else:
+                    _conversations[session_id].append(
+                        {"role": "assistant", "content": final_answer}
+                    )
+            else:
+                # Error path: keep line-336 user append and add error placeholder assistant
+                # so history balance is preserved for subsequent turns.
+                _conversations[session_id].append(
+                    {"role": "assistant", "content": final_answer}
+                )
 
     task = asyncio.create_task(_run())
     _run_tasks[stream_key] = task

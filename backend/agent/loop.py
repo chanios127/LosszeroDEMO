@@ -93,6 +93,11 @@ class AgentLoop:
         self.max_turns = max_turns
         self._domain_context = domain_context
         self._continue_callback = continue_callback
+        self._final_messages: list[Message] = []
+
+    def get_final_messages(self) -> list[Message]:
+        """Snapshot of messages at end of last run() — includes system, user, assistant, tool."""
+        return self._final_messages
 
     async def run(
         self, user_input: str, history: list[Message] | None = None
@@ -140,6 +145,7 @@ class AgentLoop:
                     break
 
                 elif llm_event.type == LLMEventType.ERROR:
+                    self._final_messages = list(messages)
                     yield ErrorEvent(message=llm_event.message)
                     return
 
@@ -162,6 +168,7 @@ class AgentLoop:
                         turn, system_total_len, len(messages), len(tool_schemas),
                     )
                     answer = "(LLM returned empty response)"
+                self._final_messages = list(messages)
                 yield FinalEvent(
                     answer=answer,
                     viz_hint=viz_hint,
@@ -250,6 +257,7 @@ class AgentLoop:
                 turn, turn_limit,
             )
             fallback_answer = "(완료 — 텍스트 응답 없음)"
+        self._final_messages = list(messages)
         yield FinalEvent(
             answer=fallback_answer,
             viz_hint=viz_hint_final,
