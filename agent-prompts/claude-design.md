@@ -196,3 +196,9 @@ DELTA.md + SNAPSHOT.md를 참조해 다음 형식으로 외부 도구에 전달:
 - `frontend/src/design/index.css` (토큰 추가 시)
 - `frontend/src/design/components/*` (컴포넌트 변경 시)
 - SPEC.md §2 / ARCHITECTURE.md "디자인 시스템" 섹션 (구조 변경 시)
+
+---
+
+## `/clear` 안전 시점
+
+본 절차서는 supervisor 측에서 사용. supervisor 세션의 `/clear` 안전성은 `HANDOFF.md` §`/clear` 전 체크리스트(supervisor 측) 참조. 외부 Claude Design 도구는 본 협업 인프라 외부라 별도 관리.

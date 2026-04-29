@@ -182,3 +182,18 @@ uv run python -c "from main import app; print('import OK')"
 ```
 
 출력 후 supervisor 머지 검수 대기.
+
+---
+
+### `/clear` 안전 시점
+
+본 작업이 종료되어 다음 4가지 모두 통과 시 `/clear` 안전:
+
+1. `agent/backend-infra` 브랜치 push 완료
+2. supervisor에 종료 인수인계 markdown 회신 또는 파일 저장
+3. 미커밋 실험 코드 0 (commit 또는 stash)
+4. cold-start 프롬프트 + 위임 명세 마크다운만으로 작업 재개 가능 self-check
+
+위험 시점 (clear 금지): turn 진행 중 코드 작성 / 검증 한복판, in-flight tool_use→tool_result 페어 사이, supervisor 답 대기 중, 임시 합의 미박제.
+
+상세: `agent-prompts/README.md` §`/clear` 안전 시점.

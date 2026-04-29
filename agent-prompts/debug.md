@@ -198,3 +198,18 @@ per-agent feature 브랜치(`agent/debug`) 격리 덕에:
 - 머지 후 갱신 필요 문서: ROADMAP.md 미해결 → 해결 항목 이동
 - 다른 세션 영향: (있으면)
 ```
+
+---
+
+### `/clear` 안전 시점
+
+본 작업이 종료되어 다음 4가지 모두 통과 시 `/clear` 안전:
+
+1. `agent/debug` 브랜치 push 완료 (또는 stand-by 종료 시 분기 자체 불필요)
+2. supervisor에 종료 인수인계 markdown 회신 또는 파일 저장 (회귀 점검 명세 §F 포함)
+3. 미커밋 실험 코드 0 (commit 또는 stash)
+4. cold-start 프롬프트 + 위임 명세 마크다운만으로 작업 재개 가능 self-check
+
+위험 시점 (clear 금지): turn 진행 중 코드 작성 / 검증 한복판, in-flight tool_use→tool_result 페어 사이, supervisor 답 대기 중, 임시 합의 미박제, 회귀 점검 미완.
+
+상세: `agent-prompts/README.md` §`/clear` 안전 시점.
