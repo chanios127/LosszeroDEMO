@@ -11,6 +11,8 @@ from agent.events import (
     ErrorEvent,
     FinalEvent,
     LLMChunkEvent,
+    SubAgentCompleteEvent,
+    SubAgentStartEvent,
     ToolResultEvent,
     ToolStartEvent,
     VizHint,
@@ -185,6 +187,10 @@ class AgentLoop:
 
             # Tools whose results should be treated as visualizable data
             _DATA_TOOLS = {"db_query", "sp_call"}
+            _SUBAGENT_TOOLS = {"build_report", "build_view"}
+
+            if tc.name in _SUBAGENT_TOOLS:
+                yield SubAgentStartEvent(name=tc.name)
 
             try:
                 result = await tool.execute(tc.input)
@@ -196,10 +202,18 @@ class AgentLoop:
                 yield ToolResultEvent(
                     tool=tc.name, output=result, rows=rows, turn=turn,
                 )
-                messages.append(_make_tool_result_msg(
-                    tc.id,
-                    json.dumps(result, ensure_ascii=False, default=str),
-                ))
+
+                # Fix 3: prepend row count meta for list results
+                result_str = json.dumps(result, ensure_ascii=False, default=str)
+                if isinstance(result, list):
+                    result_str = f"[meta] rows={len(result)}\n" + result_str
+                messages.append(_make_tool_result_msg(tc.id, result_str))
+
+                if tc.name in _SUBAGENT_TOOLS:
+                    summary = f"{tc.name} completed"
+                    if isinstance(result, dict) and "title" in result:
+                        summary = result["title"]
+                    yield SubAgentCompleteEvent(name=tc.name, output_summary=summary)
 
             except Exception as exc:
                 logger.exception("Tool %s raised: %s", tc.name, exc)
@@ -208,6 +222,10 @@ class AgentLoop:
                     tool=tc.name, output=None, turn=turn, error=err_msg
                 )
                 messages.append(_make_tool_result_msg(tc.id, f"Error: {err_msg}"))
+                if tc.name in _SUBAGENT_TOOLS:
+                    yield SubAgentCompleteEvent(
+                        name=tc.name, output_summary=f"Error: {err_msg}"
+                    )
 
             # Check turn limit — ask user to continue if at boundary
             if turn >= turn_limit and pending_tool_call is not None:

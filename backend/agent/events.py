@@ -14,6 +14,9 @@ class EventType(str, Enum):
     FINAL = "final"
     ERROR = "error"
     CONTINUE_PROMPT = "continue_prompt"
+    SUBAGENT_START = "subagent_start"
+    SUBAGENT_PROGRESS = "subagent_progress"
+    SUBAGENT_COMPLETE = "subagent_complete"
 
 
 VizHint = Literal["bar_chart", "line_chart", "pie_chart", "table", "number"]
@@ -58,4 +61,25 @@ class ContinuePromptEvent(BaseModel):
     message: str
 
 
-AgentEvent = ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent | ErrorEvent | ContinuePromptEvent
+class SubAgentStartEvent(BaseModel):
+    type: Literal[EventType.SUBAGENT_START] = EventType.SUBAGENT_START
+    name: str
+
+
+class SubAgentProgressEvent(BaseModel):
+    type: Literal[EventType.SUBAGENT_PROGRESS] = EventType.SUBAGENT_PROGRESS
+    name: str
+    stage: str
+
+
+class SubAgentCompleteEvent(BaseModel):
+    type: Literal[EventType.SUBAGENT_COMPLETE] = EventType.SUBAGENT_COMPLETE
+    name: str
+    output_summary: str
+
+
+AgentEvent = (
+    ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent
+    | ErrorEvent | ContinuePromptEvent
+    | SubAgentStartEvent | SubAgentProgressEvent | SubAgentCompleteEvent
+)
