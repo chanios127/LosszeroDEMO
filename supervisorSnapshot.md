@@ -349,3 +349,63 @@ final (인라인 ReportContainer 또는 일반 답변)
 
 본 잠금 만료 결정은 AS현안 회귀 통과 후 별도 사이클로 처리.
 
+---
+
+## 10. Phase 9 hotfix (2026-04-29 — supervisor 직접)
+
+### 회귀 도중 발견된 이슈
+사용자가 LM Studio 환경에서 "직원별 최근 업무일지 조회" → "직원들 업무 유형 분석" 2턴 회귀 실행 중 build_report 단계에서 chain 중단 발견. log + 스크린샷 trace로 본질 원인 3종 진단:
+
+1. **`<think>` 블록 미처리** — `tools/build_report/tool.py`의 fence strip이 ```` ``` ```` 만 처리. qwen-style LM Studio 모델이 reasoning chain을 `<think>...</think>`로 emit → `json.loads('<think>...')` → JSONDecodeError → RuntimeError. 1회 retry도 같은 패턴이라 실패 → outer AgentLoop 회복 시도 → LM Studio `httpx.ReadTimeout`로 종결 → frontend "SSE connection lost".
+2. **`tools/build_view/tool.py`도 동일 위험** — `_infer_axis`의 보조 LLM 호출 path에 같은 fence strip만 있음. try/except로 silently fallback하지만 정확도 저하.
+3. **9.6 SubAgentProgress가 error 상태를 complete로 misrepresent** — Sonnet 파일럿에서 누락 평가했던 부분. 실제 사용자 화면에 "1 sub-agent complete: build_report" 표시되어 잘못된 정보 전달. 동시에 한글 stage 라벨(`build_report` → "분석 보고서 생성") 누락.
+
+### 적용된 hotfix (commit `e2197d1`)
+- `backend/tools/build_report/tool.py` — `_THINK_RE` regex로 `<think>...</think>` 일괄 제거. asymmetric residue도 방어. fence strip 직전에 적용
+- `backend/tools/build_view/tool.py` — 같은 패턴 적용
+- `frontend/src/design/components/SubAgentProgress.tsx` —
+  - `Stage.status` union에 `"error"` 추가
+  - `subagent_complete.output_summary`가 `"Error:"`로 시작하면 error 상태로 분기 (backend `loop.py`가 이미 prefix 적용 중)
+  - error 상태: `IconAlert` + `var(--danger)` 색상 (확장 카드 + 1줄 collapsed 양쪽)
+  - `STAGE_LABEL` lookup: build_report → "분석 보고서 생성", build_view → "시각화 구성"
+
+### 검증 상태
+- backend: `from main import app` + Tool import OK
+- frontend: `pnpm exec tsc --noEmit` 0 error
+- **수동 회귀는 미수행** — 사용자가 다음 세션에서 backend 재시작 후 같은 multi-turn 시나리오 재시도 권장
+
+### 부수 관찰 (다음 사이클 후보)
+- **LM Studio `model='(unset)'`** — 환경 변수 누락 의심. backend env 점검 필요 (HotfIX 영역 외)
+- **httpx timeout 명시 부재** — `backend/llm/lm_studio.py`의 AsyncClient timeout 설정 점검. 기본값에 의존 X
+- **영문 컬럼 환각**은 한글 가드(보강 B)가 못 잡음. 첫 SQL 시도가 `Title` / `Today` 같은 영문 환각 → 'Invalid column name' 에러로 LLM 자체 회복(Fix 4 효과). 그러나 회복 round-trip 비용 1회 발생. **도메인 schema 화이트리스트 검증(보강 C 후보)**가 본질 해결책.
+
+---
+
+## 11. 다음 supervisor 세션 인계 — Phase 9 종료 후 후속 우선순위
+
+본 supervisor 세션은 Phase 9 클로즈 + hotfix 직후 비움. 새 supervisor 세션이 우선순위 결정용으로 본 §11 참조.
+
+### 즉시 (검증 + 작은 정리)
+1. **수동 multi-turn 회귀 재실행** (사용자 환경) — hotfix 이후 직원별 업무일지 분석 또는 AS현안 4턴 재현. 통과 시 §8 Locks 만료 진입. 미통과 시 추가 hotfix
+2. **§8 Locks 만료 결정** — 수동 회귀 통과 후 ReportSchema/ViewBundle/build_*Tool 인터페이스 잠금 해제. 본 §8 표 갱신
+3. **`design/components/report/` 권한 재이양 결정** — Front/View 한시 → 영구 vs Claude Design 복귀
+
+### 단기 (Phase 9 잔재 정리 / 후속 hotfix)
+4. **LM Studio 환경 정리** — `model='(unset)'` 원인 추적 + 명시 설정. `backend/llm/lm_studio.py`의 httpx timeout 환경변수화 (예: `LMSTUDIO_TIMEOUT_SEC`, default 300)
+5. **도메인 schema 컬럼 화이트리스트 검증 (보강 C)** — `tools/db_query/tool.py`에 SELECT 컬럼이 도메인 schema 정의 컬럼인지 검증. 한글/영문 환각 모두 catch. 한글 가드의 본질 후속
+
+### 중기 — Phase 10 후보
+6. **HITL 게이트** — provider별 분기. 본 hotfix 회귀에서 build_report 실패 후 1턴 만에 명시적 회복 가능했음 → HITL이 build_report 출력 직후 사용자 검수 게이트로 가치 ↑
+7. **ReportSchema 점진 블록** — `table` (실 수요 빈번), `comparison`, `kpi_grid`. 9.x 잠금 해제 후
+8. **View 카탈로그 확장** — `TimeSeriesPanel`, `HeatmapCalendar` (시계열)
+9. **SubAgent 카탈로그화** — base class 추출, `comparison_agent` / `anomaly_detector` 등록 패턴 표준화
+
+### 운영 / 인프라
+10. **Sonnet 다운그레이드 정식 적용** — 9.6 파일럿 평가 기반 (§9). 명세 보강 포인트 3종 적용 후 Front/View / DB Domain Manager / BackEnd Infra(단순 영역) → Sonnet
+11. **agent-prompts/README.md** — §8 Locks Registry 인용 가이드 + 잠금 단위 명시 표준 추가
+12. **세션 영속화** — 현 `_conversations` in-process. SQLite/Redis 마이그레이션 (장기)
+
+### Phase 9 영구 잔재 (운영 관찰)
+- **AS현안 4턴 통합 회귀** — Phase 9 close 시점 미실행 박제 (§7 항목 4). 사용자 직접 검증 필요
+- 본 hotfix가 think strip을 해결했지만 다른 reasoning 마커 (`<reasoning>`, `<scratchpad>` 등) 출현 가능 — 발견 시 동일 패턴 적용
+
