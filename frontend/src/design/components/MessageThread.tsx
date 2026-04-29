@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../types/chat";
 import type { VizHint } from "../types/events";
 import { CollapsibleTrace } from "./AgentTrace";
+import { SubAgentProgress } from "./SubAgentProgress";
 import { InlineViz } from "./VizPanel";
 import { Dot } from "./primitives";
 import { IconSparkle } from "./icons";
@@ -228,6 +229,14 @@ function AssistantBubble({ msg }: { msg: ChatMessage }) {
             content={thinkSegments.map((s) => s.content).join("\n\n")}
             closed={thinkSegments.every((s) => s.closed)}
             isStreaming={msg.isStreaming}
+          />
+        )}
+
+        {/* Sub-agent stage progress */}
+        {msg.traceEvents && msg.traceEvents.length > 0 && (
+          <SubAgentProgress
+            events={msg.traceEvents}
+            isStreaming={!!msg.isStreaming}
           />
         )}
 
