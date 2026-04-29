@@ -1,4 +1,5 @@
 import type { ReportSchema, ReportBlock, DataRef } from "../../types/report";
+import type { ViewBlockSpec } from "../../types/view";
 import { MetricCard } from "./MetricCard";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { HighlightCard } from "./HighlightCard";
@@ -6,9 +7,49 @@ import { ChartBlock } from "./ChartBlock";
 
 interface ReportContainerProps {
   schema: ReportSchema;
+  /** Phase 9.5 — when present, route blocks by ViewBlockSpec.component.
+   *  When absent (e.g. /report-demo fixture), fall back to ReportBlock.type. */
+  blockSpecs?: ViewBlockSpec[];
 }
 
-function renderBlock(
+function renderByComponent(
+  block: ReportBlock,
+  index: number,
+  dataRefs: DataRef[],
+  component: ViewBlockSpec["component"],
+) {
+  const key = `${component}-${index}`;
+  switch (component) {
+    case "MarkdownBlock":
+      if (block.type === "markdown") {
+        return <MarkdownBlock key={key} content={block.content} />;
+      }
+      return null;
+    case "MetricCard":
+      if (block.type === "metric") {
+        return <MetricCard key={key} {...block} />;
+      }
+      return null;
+    case "HighlightCard":
+      if (block.type === "highlight") {
+        return <HighlightCard key={key} {...block} />;
+      }
+      return null;
+    case "ChartBlock":
+      if (block.type === "chart") {
+        return (
+          <ChartBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      return null;
+  }
+}
+
+function renderByType(
   block: ReportBlock,
   index: number,
   dataRefs: DataRef[],
@@ -32,7 +73,25 @@ function renderBlock(
   }
 }
 
-export function ReportContainer({ schema }: ReportContainerProps) {
+function renderBlock(
+  block: ReportBlock,
+  index: number,
+  dataRefs: DataRef[],
+  blockSpec: ViewBlockSpec | undefined,
+) {
+  if (blockSpec?.component) {
+    return renderByComponent(block, index, dataRefs, blockSpec.component);
+  }
+  return renderByType(block, index, dataRefs);
+}
+
+export function ReportContainer({ schema, blockSpecs }: ReportContainerProps) {
+  const specByIndex = new Map<number, ViewBlockSpec>();
+  if (blockSpecs) {
+    for (const spec of blockSpecs) {
+      specByIndex.set(spec.index, spec);
+    }
+  }
   return (
     <div
       style={{
@@ -117,7 +176,7 @@ export function ReportContainer({ schema }: ReportContainerProps) {
         }}
       >
         {schema.blocks.map((block, i) =>
-          renderBlock(block, i, schema.data_refs),
+          renderBlock(block, i, schema.data_refs, specByIndex.get(i)),
         )}
       </section>
     </div>

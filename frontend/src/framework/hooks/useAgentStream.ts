@@ -1,5 +1,8 @@
 import { useCallback, useReducer, useRef } from "react";
-import type { AgentEvent, ChatMessage, ResultEntry } from "../../design/types/events";
+import type { AgentEvent, ResultEntry } from "../../design/types/events";
+import type { ReportSchema } from "../../design/types/report";
+import type { ViewBundle } from "../../design/types/view";
+import type { EnrichedChatMessage } from "./types";
 
 // ---------------------------------------------------------------------------
 // State & Actions
@@ -12,7 +15,7 @@ export interface PendingContinue {
 }
 
 interface State {
-  messages: ChatMessage[];
+  messages: EnrichedChatMessage[];
   sessionId: string | null;
   streamKey: string | null;
   isStreaming: boolean;
@@ -27,14 +30,21 @@ type Action =
   | { type: "SET_SESSION"; sessionId: string; streamKey: string }
   | { type: "APPEND_TRACE"; event: AgentEvent }
   | { type: "APPEND_DELTA"; delta: string }
-  | { type: "SET_FINAL"; answer: string; data: Record<string, unknown>[] | null; vizHint: string }
+  | {
+      type: "SET_FINAL";
+      answer: string;
+      data: Record<string, unknown>[] | null;
+      vizHint: string;
+      reportSchema: ReportSchema | null;
+      viewBundle: ViewBundle | null;
+    }
   | { type: "SET_ERROR"; message: string }
   | { type: "CONTINUE_PROMPT"; pending: PendingContinue }
   | { type: "CONTINUE_RESOLVED" }
   | { type: "SET_ACTIVE_RESULT"; id: string | null }
   | {
       type: "LOAD_MESSAGES";
-      messages: ChatMessage[];
+      messages: EnrichedChatMessage[];
       sessionId?: string | null;
       streamKey?: string | null;
     }
@@ -53,9 +63,9 @@ const initialState: State = {
 };
 
 function updateLastAssistant(
-  msgs: ChatMessage[],
-  updater: (m: ChatMessage) => ChatMessage,
-): ChatMessage[] {
+  msgs: EnrichedChatMessage[],
+  updater: (m: EnrichedChatMessage) => EnrichedChatMessage,
+): EnrichedChatMessage[] {
   const result = [...msgs];
   for (let i = result.length - 1; i >= 0; i--) {
     if (result[i].role === "assistant") {
@@ -130,7 +140,9 @@ function reducer(state: State, action: Action): State {
           ...m,
           content: action.answer,
           data: action.data,
-          vizHint: action.vizHint as ChatMessage["vizHint"],
+          vizHint: action.vizHint as EnrichedChatMessage["vizHint"],
+          reportSchema: action.reportSchema ?? undefined,
+          viewBundle: action.viewBundle ?? undefined,
           isStreaming: false,
         })),
         results: [...state.results, newResult],
@@ -180,7 +192,7 @@ function reducer(state: State, action: Action): State {
           break;
         }
       }
-      let newMessages: ChatMessage[];
+      let newMessages: EnrichedChatMessage[];
       if (lastAssistantIdx !== -1) {
         newMessages = [...state.messages];
         newMessages[lastAssistantIdx] = {
@@ -189,6 +201,8 @@ function reducer(state: State, action: Action): State {
           traceEvents: [],
           data: null,
           vizHint: undefined,
+          reportSchema: undefined,
+          viewBundle: undefined,
           isStreaming: true,
         };
       } else {
@@ -230,12 +244,20 @@ export function useAgentStream() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const esRef = useRef<EventSource | null>(null);
   const sessionRef = useRef<string | null>(null);
+  // Phase 9.5: capture build_report / build_view tool outputs during SSE so
+  // the eventual `final` event can attach them to the assistant message.
+  // Refs (not reducer state) — these don't render and reset on each new stream.
+  const pendingReportSchemaRef = useRef<ReportSchema | null>(null);
+  const pendingViewBundleRef = useRef<ViewBundle | null>(null);
 
   // Attach an EventSource to the given stream_key. Replay-safe: backend
   // SSE generator yields all buffered events from the start on every new
   // connection, so reconnecting after a disconnect catches up automatically.
   const attachSSE = useCallback((streamKey: string) => {
     esRef.current?.close();
+    // Reset capture refs — replay will re-populate from scratch.
+    pendingReportSchemaRef.current = null;
+    pendingViewBundleRef.current = null;
     const es = new EventSource(`${API_BASE}/stream/${streamKey}`);
     esRef.current = es;
 
@@ -244,6 +266,21 @@ export function useAgentStream() {
         const event: AgentEvent = JSON.parse(e.data);
 
         if (event.type === "tool_start" || event.type === "tool_result") {
+          // Phase 9.5: capture build_report / build_view outputs.
+          if (event.type === "tool_result" && !event.error) {
+            if (event.tool === "build_report") {
+              pendingReportSchemaRef.current = event.output as ReportSchema;
+            } else if (event.tool === "build_view") {
+              pendingViewBundleRef.current = event.output as ViewBundle;
+            }
+          }
+          dispatch({ type: "APPEND_TRACE", event });
+        } else if (
+          event.type === "subagent_start" ||
+          event.type === "subagent_progress" ||
+          event.type === "subagent_complete"
+        ) {
+          // 9.6 territory — capture in trace for future UI but no-op here.
           dispatch({ type: "APPEND_TRACE", event });
         } else if (event.type === "llm_chunk") {
           dispatch({ type: "APPEND_DELTA", delta: event.delta });
@@ -262,7 +299,11 @@ export function useAgentStream() {
             answer: event.answer,
             data: event.data,
             vizHint: event.viz_hint,
+            reportSchema: pendingReportSchemaRef.current,
+            viewBundle: pendingViewBundleRef.current,
           });
+          pendingReportSchemaRef.current = null;
+          pendingViewBundleRef.current = null;
           es.close();
         } else if (event.type === "error") {
           dispatch({ type: "SET_ERROR", message: event.message });
@@ -279,6 +320,9 @@ export function useAgentStream() {
     es.addEventListener("continue_prompt", handleEvent);
     es.addEventListener("final", handleEvent);
     es.addEventListener("error", handleEvent);
+    es.addEventListener("subagent_start", handleEvent);
+    es.addEventListener("subagent_progress", handleEvent);
+    es.addEventListener("subagent_complete", handleEvent);
 
     es.onerror = () => {
       dispatch({
@@ -352,6 +396,8 @@ export function useAgentStream() {
   const reset = useCallback(() => {
     esRef.current?.close();
     sessionRef.current = null;
+    pendingReportSchemaRef.current = null;
+    pendingViewBundleRef.current = null;
     dispatch({ type: "RESET" });
   }, []);
 
@@ -361,12 +407,14 @@ export function useAgentStream() {
 
   const loadMessages = useCallback(
     (
-      messages: ChatMessage[],
+      messages: EnrichedChatMessage[],
       sessionId: string | null = null,
       streamKey: string | null = null,
     ) => {
       esRef.current?.close();
       sessionRef.current = sessionId;
+      pendingReportSchemaRef.current = null;
+      pendingViewBundleRef.current = null;
       dispatch({ type: "LOAD_MESSAGES", messages, sessionId, streamKey });
 
       // If the loaded conversation was mid-stream, decide whether to resume

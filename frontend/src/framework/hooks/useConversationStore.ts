@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ChatMessage, Conversation } from "../../design/types/events";
+import type {
+  EnrichedChatMessage,
+  EnrichedConversation,
+} from "./types";
 
-export type { Conversation };
+export type { EnrichedConversation as Conversation };
 
 const STORAGE_KEY = "llm-harness-conversations";
 
@@ -9,17 +12,20 @@ const STORAGE_KEY = "llm-harness-conversations";
 // Utilities
 // ---------------------------------------------------------------------------
 
-function loadFromStorage(): Conversation[] {
+function loadFromStorage(): EnrichedConversation[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as Conversation[];
+    // EnrichedConversation extra fields (reportSchema/viewBundle on messages)
+    // are plain JSON, so JSON.parse round-trips them automatically. Older
+    // entries without these fields just have undefined, which is fine.
+    return JSON.parse(raw) as EnrichedConversation[];
   } catch {
     return [];
   }
 }
 
-function saveToStorage(conversations: Conversation[]) {
+function saveToStorage(conversations: EnrichedConversation[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   } catch {
@@ -27,13 +33,13 @@ function saveToStorage(conversations: Conversation[]) {
   }
 }
 
-function generateTitle(messages: ChatMessage[]): string {
+function generateTitle(messages: EnrichedChatMessage[]): string {
   const firstUser = messages.find((m) => m.role === "user");
   if (!firstUser) return "새 대화";
   return firstUser.content.slice(0, 40).trim() || "새 대화";
 }
 
-function exportToMarkdown(conv: Conversation): string {
+function exportToMarkdown(conv: EnrichedConversation): string {
   const lines: string[] = [
     `# ${conv.title}`,
     `- Domain: ${conv.domainLabel}`,
@@ -68,8 +74,8 @@ function exportToMarkdown(conv: Conversation): string {
 // ---------------------------------------------------------------------------
 
 export function useConversationStore() {
-  const [conversations, setConversations] = useState<Conversation[]>(() =>
-    loadFromStorage(),
+  const [conversations, setConversations] = useState<EnrichedConversation[]>(
+    () => loadFromStorage(),
   );
 
   useEffect(() => {
@@ -81,7 +87,7 @@ export function useConversationStore() {
       id: string,
       domain: string,
       domainLabel: string,
-      messages: ChatMessage[],
+      messages: EnrichedChatMessage[],
       sessionId?: string,
       streamKey?: string,
     ) => {
@@ -92,7 +98,7 @@ export function useConversationStore() {
         const now = Date.now();
         // Preserve previously stored sessionId/streamKey if the current call
         // didn't provide them (e.g. autosave fires before backend assigns them).
-        const updated: Conversation = existing
+        const updated: EnrichedConversation = existing
           ? {
               ...existing,
               messages,
