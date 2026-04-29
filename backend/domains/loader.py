@@ -279,7 +279,7 @@ def domain_to_context(domain: DomainSpec) -> str:
                     desc = j.get("description", "")
                     lines.append(f"- → {target} ON `{on}`" + (f" — {desc}" if desc else ""))
 
-    # Top-level joins (directory-based domains)
+    # Top-level joins (directory-based domains, new schema)
     top_joins = domain.get("joins", [])
     if top_joins:
         from domains.parser import JOIN_TYPE_MAP
@@ -287,16 +287,16 @@ def domain_to_context(domain: DomainSpec) -> str:
         lines.append("\n### Join Relationships")
         for j in top_joins:
             jtype = JOIN_TYPE_MAP.get(j.get("join_type", "L"), "LEFT")
-            from_t = j.get("from_table", "")
-            to_t = j.get("to_table", "")
+            from_t = "dbo." + j["tables"][0]
+            to_t = "dbo." + j["tables"][1]
             desc = j.get("description", "")
+            from_cols = j["columns"][0]
+            to_cols = j["columns"][1]
+            operators = j.get("operators", [])
             on_parts = []
-            for fc, tc, op in zip(
-                j.get("from_columns", []),
-                j.get("to_columns", []),
-                j.get("operators", []),
-            ):
-                on_parts.append(f"{from_t}.{fc} {op} {to_t}.{tc}")
+            for i in range(len(from_cols)):
+                op = operators[i] if i < len(operators) else "="
+                on_parts.append(f"{from_t}.{from_cols[i]} {op} {to_t}.{to_cols[i]}")
             on_str = " AND ".join(on_parts)
             lines.append(f"- {on_str} ({jtype})" + (f" -- {desc}" if desc else ""))
         lines.append("")

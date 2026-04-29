@@ -1,4 +1,18 @@
-"""Join-aware SQL SELECT builder for domain join definitions."""
+"""Join-aware SQL SELECT builder for domain join definitions.
+
+New joins schema (Phase 8):
+    {
+      "name": "...",
+      "tables":  ["FromTable", "ToTable"],
+      "join_type": "L",
+      "columns": [["from_col1"], ["to_col1"]],
+      "operators": ["="],
+      "description": "..."
+    }
+
+Table names in the schema omit the ``dbo.`` prefix; this module prepends it
+automatically in generated SQL.
+"""
 from __future__ import annotations
 
 JOIN_TYPE_MAP: dict[str, str] = {
@@ -8,28 +22,30 @@ JOIN_TYPE_MAP: dict[str, str] = {
     "C": "CROSS",
 }
 
+_SCHEMA_PREFIX = "dbo."
+
 
 def build_select(
     joins: list[dict],
     select_cols: list[str] | None = None,
     use_alias: bool = True,
 ) -> str:
-    """Build a SELECT … FROM … JOIN statement from a list of join definitions.
+    """Build a SELECT ... FROM ... JOIN statement from a list of join definitions.
 
     Args:
-        joins: List of join dicts with keys: from_table, to_table, join_type,
-               from_columns, to_columns, operators.
-        select_cols: Columns to select. ``None`` means ``SELECT *``.
-        use_alias: When True, assign single-letter aliases (A, B, C …).
+        joins: List of join dicts using the new schema (``tables``, ``columns``,
+               ``operators``, ``join_type``).
+        select_cols: Columns to select.  ``None`` means ``SELECT *``.
+        use_alias: When True, assign single-letter aliases (A, B, C ...).
 
     Raises:
-        ValueError: If *joins* is empty or a from_table is not in the chain.
+        ValueError: If *joins* is empty or a from-table is not in the chain.
     """
     if not joins:
         raise ValueError("joins must be a non-empty list")
 
     # --- alias bookkeeping ---------------------------------------------------
-    alias_map: dict[str, str] = {}  # table_name → alias letter
+    alias_map: dict[str, str] = {}  # dbo.Table → alias letter
     _next_ord = 65  # ord('A')
 
     def _get_or_assign(table: str) -> str:
@@ -39,15 +55,15 @@ def build_select(
             _next_ord += 1
         return alias_map[table]
 
-    # Register base table
-    base_table = joins[0]["from_table"]
+    # Register base table (dbo-prefixed)
+    base_table = _SCHEMA_PREFIX + joins[0]["tables"][0]
     _get_or_assign(base_table)
 
     # --- build JOIN clauses ---------------------------------------------------
     join_clauses: list[str] = []
     for idx, j in enumerate(joins):
-        from_t = j["from_table"]
-        to_t = j["to_table"]
+        from_t = _SCHEMA_PREFIX + j["tables"][0]
+        to_t = _SCHEMA_PREFIX + j["tables"][1]
         jtype_key = j.get("join_type", "L").upper()
         jtype = JOIN_TYPE_MAP.get(jtype_key, "LEFT")
 
@@ -70,9 +86,9 @@ def build_select(
             join_clauses.append(f"CROSS JOIN {to_decl}")
             continue
 
-        # ON clause from parallel arrays
-        from_cols = j.get("from_columns", [])
-        to_cols = j.get("to_columns", [])
+        # ON clause from columns[0] / columns[1] / operators
+        from_cols = j["columns"][0]
+        to_cols = j["columns"][1]
         operators = j.get("operators", [])
         on_parts: list[str] = []
         for i in range(len(from_cols)):
@@ -100,9 +116,8 @@ if __name__ == "__main__":
     def _run_tests() -> None:
         print("=== Case 1: 2-table, single col, = ===")
         sql = build_select([
-            {"from_table": "dbo.Orders", "to_table": "dbo.Customers",
-             "join_type": "L", "from_columns": ["CustID"],
-             "to_columns": ["ID"], "operators": ["="]},
+            {"tables": ["Orders", "Customers"], "join_type": "L",
+             "columns": [["CustID"], ["ID"]], "operators": ["="]},
         ])
         print(sql, "\n")
         assert "LEFT JOIN" in sql
@@ -112,12 +127,10 @@ if __name__ == "__main__":
 
         print("=== Case 2: 3-table chain, <> operator ===")
         sql = build_select([
-            {"from_table": "dbo.A_T", "to_table": "dbo.B_T",
-             "join_type": "L", "from_columns": ["x"],
-             "to_columns": ["y"], "operators": ["="]},
-            {"from_table": "dbo.B_T", "to_table": "dbo.C_T",
-             "join_type": "L", "from_columns": ["m"],
-             "to_columns": ["n"], "operators": ["<>"]},
+            {"tables": ["A_T", "B_T"], "join_type": "L",
+             "columns": [["x"], ["y"]], "operators": ["="]},
+            {"tables": ["B_T", "C_T"], "join_type": "L",
+             "columns": [["m"], ["n"]], "operators": ["<>"]},
         ])
         print(sql, "\n")
         assert "LEFT JOIN dbo.B_T" in sql
@@ -126,9 +139,8 @@ if __name__ == "__main__":
 
         print("=== Case 3: composite join (2 columns, AND) ===")
         sql = build_select([
-            {"from_table": "dbo.X", "to_table": "dbo.Y",
-             "join_type": "L", "from_columns": ["a", "b"],
-             "to_columns": ["c", "d"], "operators": ["=", "="]},
+            {"tables": ["X", "Y"], "join_type": "L",
+             "columns": [["a", "b"], ["c", "d"]], "operators": ["=", "="]},
         ])
         print(sql, "\n")
         assert "AND" in sql
@@ -137,15 +149,12 @@ if __name__ == "__main__":
 
         print("=== Case 4: INNER / RIGHT / CROSS ===")
         sql = build_select([
-            {"from_table": "dbo.P", "to_table": "dbo.Q",
-             "join_type": "I", "from_columns": ["id"],
-             "to_columns": ["pid"], "operators": ["="]},
-            {"from_table": "dbo.P", "to_table": "dbo.R",
-             "join_type": "R", "from_columns": ["id"],
-             "to_columns": ["pid"], "operators": ["="]},
-            {"from_table": "dbo.P", "to_table": "dbo.S",
-             "join_type": "C", "from_columns": [],
-             "to_columns": [], "operators": []},
+            {"tables": ["P", "Q"], "join_type": "I",
+             "columns": [["id"], ["pid"]], "operators": ["="]},
+            {"tables": ["P", "R"], "join_type": "R",
+             "columns": [["id"], ["pid"]], "operators": ["="]},
+            {"tables": ["P", "S"], "join_type": "C",
+             "columns": [[], []], "operators": []},
         ])
         print(sql, "\n")
         assert "INNER JOIN" in sql
@@ -155,31 +164,37 @@ if __name__ == "__main__":
 
         print("=== Case 5: use_alias=False ===")
         sql = build_select(
-            [{"from_table": "dbo.Orders", "to_table": "dbo.Customers",
-              "join_type": "L", "from_columns": ["CustID"],
-              "to_columns": ["ID"], "operators": ["="]}],
+            [{"tables": ["Orders", "Customers"], "join_type": "L",
+              "columns": [["CustID"], ["ID"]], "operators": ["="]}],
             use_alias=False,
         )
         print(sql, "\n")
         assert "dbo.Orders.CustID = dbo.Customers.ID" in sql
-        # No single-letter aliases in output
         assert " A " not in sql
         assert " B " not in sql
 
-        # Chain validation test
-        print("=== Case 6 (bonus): chain broken → ValueError ===")
+        print("=== Case 6 (bonus): chain broken -> ValueError ===")
         try:
             build_select([
-                {"from_table": "dbo.A_T", "to_table": "dbo.B_T",
-                 "join_type": "L", "from_columns": ["x"],
-                 "to_columns": ["y"], "operators": ["="]},
-                {"from_table": "dbo.Z_T", "to_table": "dbo.C_T",
-                 "join_type": "L", "from_columns": ["m"],
-                 "to_columns": ["n"], "operators": ["="]},
+                {"tables": ["A_T", "B_T"], "join_type": "L",
+                 "columns": [["x"], ["y"]], "operators": ["="]},
+                {"tables": ["Z_T", "C_T"], "join_type": "L",
+                 "columns": [["m"], ["n"]], "operators": ["="]},
             ])
             assert False, "Should have raised ValueError"
         except ValueError as e:
             print(f"Correctly raised: {e}\n")
+
+        print("=== Case 7 (bonus): old schema -> KeyError ===")
+        try:
+            build_select([
+                {"from_table": "dbo.Orders", "to_table": "dbo.Customers",
+                 "join_type": "L", "from_columns": ["CustID"],
+                 "to_columns": ["ID"], "operators": ["="]},
+            ])
+            assert False, "Should have raised KeyError"
+        except KeyError as e:
+            print(f"Correctly raised KeyError for old schema: {e}\n")
 
         print("All tests passed.")
 
