@@ -103,15 +103,21 @@ new-task / resume 진입 시 §5.1 자율 분기 → §5.2 가드레일 self-jud
 
 ## 5. 작업 중 규칙 (Debug 차별점 — 가드레일 본문)
 
-### 5.1 자율 브랜치 분기 (위임 시점에 1회)
+### 5.1 자율 worktree 분기 (위임 시점에 1회)
+
+**supervisor 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)에서 `git checkout -b` 금지**. 반드시 별도 디렉토리에서 작업 (Phase 8·9 사고 재발 방지):
 
 ```bash
 git fetch origin
-git checkout main && git pull --ff-only
-git checkout -b agent/debug
+git worktree add ../LosszeroDEMO-debug -b agent/debug origin/main
+cd ../LosszeroDEMO-debug
+# 이후 모든 작업은 이 디렉토리에서
 ```
 
+`.env` 등 worktree-shared 안 되는 파일은 별도 복사 필요.
+
 작업 후: `git push -u origin agent/debug` → supervisor가 회귀 명세 검수 후 main으로 머지.
+종료 시: `cd C:\ParkwooDevProjects\LosszeroDEMO && git worktree remove ../LosszeroDEMO-debug`.
 
 ### 5.2 가드레일 (옵션 1 블랙리스트 + 안전장치 2개)
 

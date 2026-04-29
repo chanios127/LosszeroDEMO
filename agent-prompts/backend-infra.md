@@ -111,15 +111,21 @@ new-task / resume 진입 시 §5에 따라 자율 분기 후 작업.
 
 ## 5. 작업 중 규칙 (BackEnd Infra 차별점)
 
-### 5.1 자율 브랜치 분기 (위임 시점에 1회)
+### 5.1 자율 worktree 분기 (위임 시점에 1회)
+
+**supervisor 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)에서 `git checkout -b` 금지**. 반드시 별도 디렉토리에서 작업 (Phase 8·9 사고 재발 방지):
 
 ```bash
 git fetch origin
-git checkout main && git pull --ff-only
-git checkout -b agent/backend-infra     # 없으면 생성, 있으면 git switch
+git worktree add ../LosszeroDEMO-backend-infra -b agent/backend-infra origin/main
+cd ../LosszeroDEMO-backend-infra
+# 이후 모든 작업은 이 디렉토리에서
 ```
 
+`.env` 등 worktree-shared 안 되는 파일은 별도 복사 필요.
+
 작업 후: `git push -u origin agent/backend-infra` → supervisor가 main으로 머지.
+종료 시: `cd C:\ParkwooDevProjects\LosszeroDEMO && git worktree remove ../LosszeroDEMO-backend-infra`.
 
 ### 5.2 위험 영역 (변경 전 supervisor 사전 합의 필요)
 

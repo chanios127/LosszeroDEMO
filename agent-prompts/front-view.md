@@ -104,15 +104,21 @@ supervisor의 위임 명세를 받으면 작업 시작 전에 §1 "작업 영역
 
 ## 5. 작업 중 규칙 (Front/View 차별점)
 
-### 5.1 자율 브랜치 분기 (위임 시점에 1회)
+### 5.1 자율 worktree 분기 (위임 시점에 1회)
+
+**supervisor 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)에서 `git checkout -b` 금지**. 반드시 별도 디렉토리에서 작업 (Phase 8·9 사고 재발 방지):
 
 ```bash
 git fetch origin
-git checkout main && git pull --ff-only
-git checkout -b agent/front-view
+git worktree add ../LosszeroDEMO-front-view -b agent/front-view origin/main
+cd ../LosszeroDEMO-front-view
+# 이후 모든 작업은 이 디렉토리에서
 ```
 
+`.env` 등 worktree-shared 안 되는 파일은 별도 복사 필요.
+
 작업 후: `git push -u origin agent/front-view` → supervisor가 main으로 머지.
+종료 시: `cd C:\ParkwooDevProjects\LosszeroDEMO && git worktree remove ../LosszeroDEMO-front-view`.
 
 ### 5.2 design ↔ framework 분리 원칙 (필수 준수)
 

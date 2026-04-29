@@ -202,3 +202,7 @@ DELTA.md + SNAPSHOT.md를 참조해 다음 형식으로 외부 도구에 전달:
 ## `/clear` 안전 시점
 
 본 절차서는 supervisor 측에서 사용. supervisor 세션의 `/clear` 안전성은 `HANDOFF.md` §`/clear` 전 체크리스트(supervisor 측) 참조. 외부 Claude Design 도구는 본 협업 인프라 외부라 별도 관리.
+
+## main 고정 원칙 (supervisor 측)
+
+본 절차 수행 시에도 supervisor 워크트리는 항상 `main` 브랜치 고정. design-export 패키지 생성·산출물 통합 모두 main 위에서. 상세: `HANDOFF.md` §main 고정 원칙.
