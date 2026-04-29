@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Conversation } from "../types/events";
+import type { Conversation } from "../types/chat";
 import { IconPlus, IconSearch } from "./icons";
 import { Button, fmtRel } from "./primitives";
 

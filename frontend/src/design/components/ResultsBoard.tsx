@@ -1,4 +1,4 @@
-import type { ResultEntry } from "../types/events";
+import type { ResultEntry } from "../types/result";
 import { SwitchableViz, VIZ_ICON_MAP } from "./VizPanel";
 
 // ---------------------------------------------------------------------------

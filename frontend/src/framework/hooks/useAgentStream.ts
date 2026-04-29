@@ -1,8 +1,9 @@
 import { useCallback, useReducer, useRef } from "react";
-import type { AgentEvent, ResultEntry } from "../../design/types/events";
+import type { AgentEvent } from "../../design/types/events";
+import type { ChatMessage } from "../../design/types/chat";
+import type { ResultEntry } from "../../design/types/result";
 import type { ReportSchema } from "../../design/types/report";
 import type { ViewBundle } from "../../design/types/view";
-import type { EnrichedChatMessage } from "./types";
 
 // ---------------------------------------------------------------------------
 // State & Actions
@@ -15,7 +16,7 @@ export interface PendingContinue {
 }
 
 interface State {
-  messages: EnrichedChatMessage[];
+  messages: ChatMessage[];
   sessionId: string | null;
   streamKey: string | null;
   isStreaming: boolean;
@@ -44,7 +45,7 @@ type Action =
   | { type: "SET_ACTIVE_RESULT"; id: string | null }
   | {
       type: "LOAD_MESSAGES";
-      messages: EnrichedChatMessage[];
+      messages: ChatMessage[];
       sessionId?: string | null;
       streamKey?: string | null;
     }
@@ -63,9 +64,9 @@ const initialState: State = {
 };
 
 function updateLastAssistant(
-  msgs: EnrichedChatMessage[],
-  updater: (m: EnrichedChatMessage) => EnrichedChatMessage,
-): EnrichedChatMessage[] {
+  msgs: ChatMessage[],
+  updater: (m: ChatMessage) => ChatMessage,
+): ChatMessage[] {
   const result = [...msgs];
   for (let i = result.length - 1; i >= 0; i--) {
     if (result[i].role === "assistant") {
@@ -140,7 +141,7 @@ function reducer(state: State, action: Action): State {
           ...m,
           content: action.answer,
           data: action.data,
-          vizHint: action.vizHint as EnrichedChatMessage["vizHint"],
+          vizHint: action.vizHint as ChatMessage["vizHint"],
           reportSchema: action.reportSchema ?? undefined,
           viewBundle: action.viewBundle ?? undefined,
           isStreaming: false,
@@ -192,7 +193,7 @@ function reducer(state: State, action: Action): State {
           break;
         }
       }
-      let newMessages: EnrichedChatMessage[];
+      let newMessages: ChatMessage[];
       if (lastAssistantIdx !== -1) {
         newMessages = [...state.messages];
         newMessages[lastAssistantIdx] = {
@@ -407,7 +408,7 @@ export function useAgentStream() {
 
   const loadMessages = useCallback(
     (
-      messages: EnrichedChatMessage[],
+      messages: ChatMessage[],
       sessionId: string | null = null,
       streamKey: string | null = null,
     ) => {

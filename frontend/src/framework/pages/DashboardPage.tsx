@@ -14,7 +14,8 @@ import {
 } from "../../design/components/icons";
 import { fmtRel } from "../../design/components/primitives";
 import { useConversationStore } from "../hooks/useConversationStore";
-import type { Conversation, VizHint } from "../../design/types/events";
+import type { Conversation } from "../../design/types/chat";
+import type { VizHint } from "../../design/types/events";
 
 interface Module {
   id: Page;

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { useConversationStore } from "../hooks/useConversationStore";
-import type { EnrichedChatMessage } from "../hooks/types";
+import type { ChatMessage } from "../../design/types/chat";
 import type { ViewBundle } from "../../design/types/view";
 import ChatInput from "../../design/components/ChatInput";
 import MessageThread from "../../design/components/MessageThread";
@@ -11,14 +11,14 @@ import { ReportContainer } from "../../design/components/report/ReportContainer"
 // Phase 9.5 — split message thread around assistant messages that carry a
 // build_view bundle so a ReportContainer renders inline right below the bubble.
 type MessageChunk =
-  | { kind: "thread"; key: string; messages: EnrichedChatMessage[] }
+  | { kind: "thread"; key: string; messages: ChatMessage[] }
   | { kind: "report"; key: string; viewBundle: ViewBundle };
 
 function splitMessagesForReports(
-  messages: EnrichedChatMessage[],
+  messages: ChatMessage[],
 ): MessageChunk[] {
   const chunks: MessageChunk[] = [];
-  let buffer: EnrichedChatMessage[] = [];
+  let buffer: ChatMessage[] = [];
   for (const m of messages) {
     buffer.push(m);
     if (m.role === "assistant" && m.viewBundle) {

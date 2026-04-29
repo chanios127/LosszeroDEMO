@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage, VizHint } from "../types/events";
+import type { ChatMessage } from "../types/chat";
+import type { VizHint } from "../types/events";
 import { CollapsibleTrace } from "./AgentTrace";
 import { InlineViz } from "./VizPanel";
 import { Dot } from "./primitives";
