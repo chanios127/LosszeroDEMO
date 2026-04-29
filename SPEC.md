@@ -45,11 +45,16 @@ LosszeroDEMO/
 │   ├── db/
 │   │   └── connection.py                # PyodbcPool + asyncio wrapper
 │   ├── domains/
-│   │   ├── loader.py                    # schema_registry 글로빙 + 매칭 + 프롬프트 변환
-│   │   └── __init__.py
+│   │   ├── loader.py                    # 단일 *.json + 폴더 도메인 로딩, 매칭, 프롬프트 변환
+│   │   ├── parser.py                    # build_select() — joins → SELECT SQL 재조립
+│   │   └── __init__.py                  # build_select 재수출
 │   └── schema_registry/
 │       └── domains/
-│           └── groupware.json           # GW 도메인
+│           └── groupware/                # GW 도메인 (폴더 형식 — Phase 7)
+│               ├── meta.json             # domain / display_name / db / keywords / table_groups
+│               ├── tables.json           # {"tables": [...]} — 컬럼 스키마, joins 분리됨
+│               ├── joins.json            # {"joins": [...]} — 1급 join 스키마 (from/to_columns + operators)
+│               └── stored_procedures.json # {"stored_procedures": [...]}
 │
 ├── frontend/
 │   ├── src/
@@ -244,40 +249,73 @@ Step 3: 위젯 저장 (Phase 6 예정)
 
 ## 5. 도메인 레지스트리
 
-**위치**: `backend/schema_registry/domains/*.json`
+**위치**: `backend/schema_registry/domains/`
 
-**현재 등록**: `groupware.json` (13 tables, 6 groups: attendance, task, workboard, approval, meeting, hr_etc)
+**현재 등록**: `groupware/` (폴더 형식, 15 tables, 20 joins, 7 groups: attendance, task, workboard, approval, meeting, hr_etc, master)
 
-**JSON 구조**:
+### 5.1 도메인 형식 (Phase 7)
+
+도메인은 **폴더** 또는 단일 **`*.json` 파일** 두 형식 모두 인식된다.
+
+#### 폴더 형식 (권장, groupware 사용)
+
+```
+domains/groupware/
+├── meta.json              # 도메인 메타 (domain, display_name, db, keywords, table_groups)
+├── tables.json            # {"tables": [...]} — 컬럼 스키마. 내부 joins 필드 없음
+├── joins.json             # {"joins": [...]} — 1급 join 스키마 (아래 §5.2)
+└── stored_procedures.json # {"stored_procedures": [...]}
+```
+
+`meta.json` + `tables.json`은 필수, 나머지는 선택. 로더가 4 파일을 단일 DomainSpec으로 병합.
+
+#### 단일 파일 형식 (하위호환)
+
+기존 `domains/<name>.json` 단일 파일도 계속 정상 인식 (테이블 하위 `joins` 포함 구 스키마 유지).
+
+### 5.2 신규 joins 스키마 (top-level)
+
 ```json
 {
-  "domain": "groupware",
-  "display_name": "그룹웨어",
-  "db": "GW",
-  "keywords": ["출근", "퇴근", "근태", ...],
-  "table_groups": {"attendance": "근태 — 출퇴근 기록"},
-  "stored_procedures": [],
-  "tables": [
+  "joins": [
     {
-      "name": "dbo.TGW_AttendList",
-      "table_group": "attendance",
-      "description": "출/퇴근 기록",
-      "columns": [
-        {"name": "at_AttDt", "type": "datetime", "pk": true, "description": "출근일시"}
-      ],
-      "joins": [{"target": "...", "on": "...", "type": "one_to_many"}]
+      "name": "tgw_attend_list_to_lzxp310_t",
+      "from_table": "dbo.TGW_AttendList",
+      "to_table":   "dbo.LZXP310T",
+      "join_type":  "L",
+      "from_columns": ["at_UserID"],
+      "to_columns":   ["Uid"],
+      "operators":    ["="],
+      "description":  "사용자 이름 해석 (at_UserID → uName)"
     }
   ]
 }
 ```
 
-**로더 동작**:
-1. 서버 시작 시 `*.json` 글로빙 → 메모리 캐시
-2. 사용자 질문 → keywords 매칭 (+ display_name/domain 보너스)
-3. 최적 도메인의 테이블/컬럼/SP를 시스템 프롬프트에 주입
-4. SP 화이트리스트: 각 JSON의 `stored_procedures`에서 자동 추출
+- `join_type`: `L`/`R`/`I`/`C` (LEFT/RIGHT/INNER/CROSS), 대소문자 무시.
+- `from_columns[i]` ↔ `to_columns[i]` ↔ `operators[i]` — 길이 동일, 인덱스 1:1 매칭. composite key 지원.
+- `operators`: `=`, `<>`, `>`, `<`, `>=`, `<=`.
+- `name`은 optional 디버깅 식별자.
 
-**프론트엔드 연동**: `GET /api/domains` → AgentChatPage, DashboardPage 동적 렌더링
+### 5.3 로더 동작
+
+1. 서버 시작 시 `*.json` 글로빙(구 형식) + 디렉토리 순회(신 형식, `meta.json` 존재 검사) → 메모리 캐시
+2. 사용자 질문 → keywords 매칭 (+ display_name/domain 보너스)
+3. 최적 도메인의 테이블/컬럼/SP/joins를 시스템 프롬프트에 주입 (top-level joins → `### Join Relationships` 섹션)
+4. SP 화이트리스트: 각 도메인의 `stored_procedures`에서 자동 추출
+
+### 5.4 join → SQL 파서 (`backend/domains/parser.py`)
+
+`build_select(joins, select_cols=None, use_alias=True) -> str`
+
+- 입력: 신 joins 객체 배열의 부분집합(테이블 사슬). 첫 entry의 `from_table`이 base.
+- 출력: `SELECT ... FROM A LEFT JOIN B ON ... LEFT JOIN C ON ...` SQL 문자열.
+- alias: `use_alias=True`면 A/B/C… 자동 부여. `False`면 full table name.
+- composite ON: `from_columns[i] {operators[i]} to_columns[i]`을 `AND`로 연결.
+- CROSS JOIN은 ON 절 없이 생성.
+- 체인 끊김 / 빈 입력 시 `ValueError`.
+
+**프론트엔드 연동**: `GET /api/domains` → 요약 dict(`table_count`, `join_count`, `sp_count`, `table_groups`, `keywords[:5]`) → AgentChatPage, DashboardPage 동적 렌더링.
 
 ---
 

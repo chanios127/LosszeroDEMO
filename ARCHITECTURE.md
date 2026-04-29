@@ -34,11 +34,13 @@ LosszeroDEMO/
 │   ├── db/
 │   │   └── connection.py                # pyodbc 풀 + run_in_executor
 │   ├── domains/
-│   │   ├── loader.py                    # schema_registry 글로빙 + 매칭
+│   │   ├── loader.py                    # 단일 *.json + 폴더 도메인 로딩, 매칭
+│   │   ├── parser.py                    # build_select() — joins → SELECT SQL
 │   │   └── __init__.py
 │   └── schema_registry/
 │       └── domains/
-│           └── *.json                   # 도메인 정의 (사용자 작성)
+│           └── <name>/                  # 폴더 형식 (Phase 7) — meta/tables/joins/stored_procedures.json
+│               # 또는 <name>.json 단일 파일 (하위호환)
 │
 ├── frontend/
 │   ├── src/
@@ -157,36 +159,49 @@ description.md는 LLM 시스템 프롬프트에 그대로 주입.
 
 ## 도메인 레지스트리
 
-**위치**: `backend/schema_registry/domains/*.json`
+**위치**: `backend/schema_registry/domains/`
 
-**작동 방식**:
-1. 서버 시작 시 `*.json` 글로빙 → 메모리 캐시
-2. 사용자 질문 → keywords 매칭 → 최적 도메인 선택
-3. 해당 도메인의 테이블/컬럼/SP 정보를 시스템 프롬프트에 주입
-4. SP 화이트리스트도 도메인 JSON 내 `stored_procedures`에서 자동 추출
+도메인은 **폴더 형식**(권장, Phase 7) 또는 **단일 `*.json` 파일**(하위호환) 두 형식을 모두 지원.
 
-**JSON 구조**:
+### 폴더 형식 (groupware 사용)
+
+```
+domains/groupware/
+├── meta.json              # domain / display_name / db / keywords / table_groups
+├── tables.json            # {"tables": [...]} — 컬럼 스키마, 내부 joins 없음
+├── joins.json             # {"joins": [...]} — 1급 join 스키마 (top-level 평탄화)
+└── stored_procedures.json # {"stored_procedures": [...]}
+```
+
+`meta.json` + `tables.json` 필수, 나머지는 선택. 로더가 4 파일을 단일 DomainSpec으로 병합.
+
+### 신규 joins 스키마 (top-level)
+
 ```json
 {
-  "domain": "groupware",
-  "display_name": "그룹웨어",
-  "db": "GW",
-  "keywords": ["출근", "퇴근", "근태"],
-  "table_groups": { "attendance": "근태 — 출퇴근 기록" },
-  "stored_procedures": [],
-  "tables": [
-    {
-      "name": "dbo.TGW_AttendList",
-      "table_group": "attendance",
-      "description": "출/퇴근 기록",
-      "columns": [{"name": "at_AttDt", "type": "datetime", "pk": true, "description": "출근일시"}],
-      "joins": [{"target": "dbo.TGW_AttendExcept", "on": "...", "type": "one_to_many"}]
-    }
-  ]
+  "from_table": "dbo.TGW_AttendList",
+  "to_table":   "dbo.LZXP310T",
+  "join_type":  "L",                // L/R/I/C (대소문자 무시)
+  "from_columns": ["at_UserID"],
+  "to_columns":   ["Uid"],
+  "operators":    ["="],            // 인덱스 1:1, composite key 지원
+  "description":  "사용자 이름 해석 (at_UserID → uName)",
+  "name":         "tgw_attend_list_to_lzxp310_t"   // optional
 }
 ```
 
-**프론트엔드 연동**: `GET /api/domains` → 에이전트 카드 동적 생성 (AgentChatPage)
+### 작동 방식
+
+1. 서버 시작 시 `*.json` 글로빙(구) + 디렉토리 순회(신, `meta.json` 검사) → 메모리 캐시
+2. 사용자 질문 → keywords 매칭 → 최적 도메인 선택
+3. 테이블/컬럼/SP/joins 정보를 시스템 프롬프트에 주입 (top-level joins는 `### Join Relationships` 섹션으로 직렬화)
+4. SP 화이트리스트는 각 도메인의 `stored_procedures`에서 자동 추출
+
+### join → SQL 파서
+
+`backend/domains/parser.py:build_select(joins, select_cols=None, use_alias=True) -> str` — 신 joins 스키마를 입력받아 `SELECT ... FROM A LEFT JOIN B ON ... LEFT JOIN C ON ...` SQL 문자열을 재조립. alias 자동 부여, composite ON, CROSS JOIN, 체인 검증 지원.
+
+**프론트엔드 연동**: `GET /api/domains` → 요약 dict(`table_count`, `join_count`, `sp_count`, `table_groups`, `keywords[:5]`) → 에이전트 카드 동적 생성 (AgentChatPage).
 
 ---
 

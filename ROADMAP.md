@@ -1,8 +1,17 @@
 # LLM Harness — 미이행 로드맵
 
-> 최종 갱신: 2026-04-28 (Phase 6.5 종료 시점)
+> 최종 갱신: 2026-04-29 (Phase 7 종료 시점)
 
-현재 SPEC.md에 정의된 기능은 Phase 6.5까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+현재 SPEC.md에 정의된 기능은 Phase 7까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+
+## ✅ Phase 7에서 처리됨 (도메인 레지스트리 폴더화 + join 1급화)
+
+- **도메인 폴더 형식 도입** — `groupware.json` → `groupware/{meta,tables,joins,stored_procedures}.json` 분리. 단일 `*.json` 형식은 하위호환 유지
+- **joins 1급 스키마** — 테이블 하위 `joins[*]` (target/on string) → top-level `joins[*]` 객체 (`from_table`/`to_table`/`from_columns`/`to_columns`/`operators`/`join_type`). composite key + `=`/`<>`/`>`/`<`/`>=`/`<=` 연산자 지원
+- **로더 디렉토리 인식** — `backend/domains/loader.py:_load_directory_omain()` + `load_all_domains()` 디렉토리 순회 추가
+- **`domain_to_context()` top-level joins 직렬화** — `### Join Relationships` 섹션으로 LLM 친화 출력
+- **`build_select` 파서 신설** — `backend/domains/parser.py`. joins 부분집합 → `SELECT ... FROM A LEFT JOIN B ON ...` SQL 자동 재조립. alias / composite ON / CROSS JOIN / 체인 검증
+- **위임 검증 가드** — 각 agent cold-start §1에 추가, 잘못 라우팅된 위임 자동 차단
 
 ## ✅ Phase 6.5에서 처리됨 (협업 인프라)
 
@@ -112,11 +121,11 @@
 ---
 
 ### E. 도메인 레지스트리 확장
-**현재 상태**: `groupware.json`만 등록.
+**현재 상태**: `groupware/` 폴더 형식만 등록 (Phase 7 적용).
 
 **필요 작업**:
-- MES 도메인 JSON 추가 (`production.json` 등)
-- 스킬 `LosszeroDB_3Z_MES`의 meta.py로 테이블/컬럼 조회 → 수동 작성
+- MES 도메인 폴더 추가 (`production/` 등 — 처음부터 신규 폴더 형식으로 작성)
+- 스킬 `LosszeroDB_3Z_MES`의 meta.py로 테이블/컬럼 조회 → meta/tables/joins/stored_procedures.json 수동 작성
 - SP 목록 화이트리스트 등록 (LLM_* 계열 등)
 - 여러 도메인 테스트 (키워드 충돌, 도메인 간 조인 등)
 
