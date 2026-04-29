@@ -4,6 +4,7 @@ import {
   IconSparkle,
   IconDB,
   IconLayout,
+  IconBar,
   IconChevL,
   IconChevR,
   IconSettings,
@@ -13,13 +14,19 @@ import {
 } from "./icons";
 import { Button, Dot, cls } from "./primitives";
 
-export type Page = "dashboard" | "data-query" | "agent-chat" | "ui-builder";
+export type Page =
+  | "dashboard"
+  | "data-query"
+  | "agent-chat"
+  | "ui-builder"
+  | "report-demo";
 
 export const PAGE_LABELS: Record<Page, string> = {
   dashboard: "대시보드",
   "data-query": "데이터 조회",
   "agent-chat": "에이전트 챗봇",
   "ui-builder": "UI 빌더",
+  "report-demo": "리포트 데모",
 };
 
 interface NavItem {
@@ -33,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "data-query", label: PAGE_LABELS["data-query"], Icon: IconDB },
   { id: "agent-chat", label: PAGE_LABELS["agent-chat"], Icon: IconSparkle },
   { id: "ui-builder", label: PAGE_LABELS["ui-builder"], Icon: IconLayout },
+  { id: "report-demo", label: PAGE_LABELS["report-demo"], Icon: IconBar },
 ];
 
 // ---------------------------------------------------------------------------
