@@ -195,3 +195,32 @@ final (인라인 ReportContainer 또는 일반 답변)
 - SSE `subagent_start` / `subagent_progress` / `subagent_complete` 이벤트 신설
 - worktree 분리 강제 (`git worktree add ../LosszeroDEMO-backend-infra -b agent/backend-infra origin/main`)
 
+### 9.3 + 9.4 + 보강 A·B — build_view + AgentLoop 등록 + SSE subagent_* + Debug Fix 3·4 + anti-hallucination guards (완료, 2026-04-29)
+
+- 머지 커밋: `--no-ff` merge of `agent/backend-infra` (6 commits)
+- 9.3: `backend/tools/build_view/` 신설 — ViewBundle = enriched ReportSchema + ViewBlockSpec routing, chart 축 보조 LLM(1회) + viz_hint별 deterministic fallback, LLMProvider injectable
+- 9.4: `backend/agent/events.py` (SubAgent 3종 + AgentEvent union), `backend/main.py` (provider singleton 그대로 sub-agent 주입), `backend/agent/loop.py` (subagent_* emit + Fix 3 `[meta] rows={N}` prepend), `backend/prompts/system_base.md` (Fix 4 + report pipeline 가이드), `frontend/src/design/types/events.ts` 미러
+- 보강 A: `system_base.md` Fix 4 강화 — 3단계 우선순위 (도메인 schema > list_tables > 사용자 질문) + Korean guard 메시지 인지 + Alias 가이드
+- 보강 B: `backend/tools/db_query/tool.py` — `_assert_no_korean_in_select` regex 가드 (Hangul + Jamo, AS alias 4가지 패턴 strip 후 SELECT~FROM 구간 검사). 환각 컬럼 SQL을 ValueError로 차단
+
+#### 박제된 결정 / 9.5·9.6 위임 시 인용
+
+1. **subagent_* ↔ tool_start/result 정책** — 본 phase는 양쪽 모두 emit. 9.6 Front/View가 sub-agent를 별도 progress 위젯으로, tool_start/result는 AgentTrace 기존 표시로 분리 운영. (사용자 결정 1.b)
+2. **ref-mode hydration** — 본 phase 미적용 (embed-only). 9.5 persistence 시점에 ref → embed hydrate 후 저장. (사용자 결정 2.b)
+3. **ViewBundle component routing** — 9.5 frontend 인라인 렌더링은 ViewBundle.blocks의 `component` 필드 신뢰. block.type fallback 제거. (사용자 결정 4)
+4. **provider 전역** — `main.py`의 `llm = get_provider()` singleton이 BuildReportTool/BuildViewTool 생성자에 inject. dual provider 동적 전환 시 자동 동기화. (사용자 결정 5)
+5. **AS현안 4턴 통합 회귀 — 미실행** — agent worktree에서 LM Studio 라이브 호출 환경 부족. **supervisor/사용자 수동 운영 관찰 필요** — Q3 SQL이 `wb_Title`/`wb_reqDt`/`wb_emFg` 사용 + 환각 시 한글 가드가 차단해 LLM이 도메인 schema 재참조하는지. 미통과 시 Fix 4 추가 강화 또는 별도 Debug 사이클.
+6. **`subagent_progress` emit 미사용** — build_report/build_view 내부에서 stage 보고 hookup은 9.5+에서 결정. 현재 start/complete만 발사.
+
+#### 9.5 위임 시 헤드업
+- ReportContainer 인라인 렌더링: ViewBundle 신뢰. block.type fallback 제거.
+- Persistence: 메시지 메타데이터에 ReportSchema + ViewBundle 첨부. ref → embed hydrate 후 저장 (대화 재현 보장).
+- Debug Fix 2 흡수: `_conversations[session_id]`에 AgentLoop messages(시스템 제외) 복사. **MAX_HISTORY 트리밍이 tool_use/tool_result 페어를 깨면 OpenAI/Anthropic 400 에러 → 페어 단위 자르는 가드 필수**.
+- Front/View + BackEnd Infra 양 영역 위임 → worktree 2개 분리 또는 순차 실행.
+- AS현안 4턴 회귀 통합 검증을 9.5 cycle에 흡수 권장 (Fix 2가 history 보존하면 회귀 통과 가능성 ↑).
+
+#### 9.6 위임 시 헤드업
+- subagent_* SSE 핸들러 + UI multi-stage progress 위젯
+- tool_start/tool_result는 기존 AgentTrace 그대로 (양 가시성 동시 노출)
+- 9.5 머지 후 시작
+
