@@ -223,4 +223,57 @@ final (인라인 ReportContainer 또는 일반 답변)
 - subagent_* SSE 핸들러 + UI multi-stage progress 위젯
 - tool_start/tool_result는 기존 AgentTrace 그대로 (양 가시성 동시 노출)
 - 9.5 머지 후 시작
+- subagent_* 이벤트는 9.5-front에서 이미 traceEvents에 capture됨 (`useAgentStream.ts`) — 9.6은 UI 핸들링만 추가
+
+### 9.5 — 인라인 ReportContainer + persistence + Fix 2 (완료, 2026-04-29)
+
+- 머지 커밋 2개 (--no-ff): `agent/front-view` (9.5-front) + `agent/backend-infra` (9.5-back)
+- **9.5-front**:
+  - `frontend/src/design/types/view.ts` 신설 — ViewBundle / ViewBlockSpec mirror
+  - `frontend/src/design/components/report/ReportContainer.tsx` — 옵션 `blockSpecs` prop, ViewBlockSpec.component 신뢰 라우팅 + block.type fallback 보존
+  - `frontend/src/framework/hooks/useAgentStream.ts` — build_report/build_view tool_result capture, final 시점에 message attach
+  - `frontend/src/framework/hooks/useConversationStore.ts` — localStorage 라운드트립
+  - `frontend/src/framework/pages/AgentChatPage.tsx` — splitMessagesForReports + 인라인 ReportContainer
+- **9.5-back (Fix 2 흡수)**:
+  - `backend/agent/history.py` 신설 — `trim_history_safely` (페어 가드) + `normalize_for_persistence` (system 필터, ref→embed stub)
+  - `backend/agent/loop.py` — `_final_messages` 속성 + `get_final_messages()` (3개 종료 경로 모두에서 messages 보관)
+  - `backend/main.py` — 성공 시 `_conversations[session_id]` 전체 교체, 에러 시 fallback. AgentLoop tool_use/tool_result 페어 보존. MAX_HISTORY 트리밍 페어 가드 적용
+- **Cleanup commit (supervisor 직접)**:
+  - `design/types/events.ts` 도메인 분리 → `chat.ts` (ChatMessage + Conversation, reportSchema/viewBundle 옵션 통합), `result.ts` (ResultEntry), `events.ts` (SSE 미러만)
+  - `framework/hooks/types.ts` 제거 — EnrichedChatMessage 우회 해소
+  - import 경로 갱신 9 파일 (5 design/, 4 framework/)
+  - `pnpm exec tsc --noEmit` 0 error
+
+#### 박제된 결정
+
+1. **ChatMessage 단일 진실원** — `design/types/chat.ts`에 통합. EnrichedChatMessage 패턴 폐기.
+2. **잠금 단위 미세화** — 파일 단위 X, **section/symbol 단위로 명시**. 위임 명세 작성 시 단위 명시 박제.
+3. **events.ts 단일 책임** — backend SSE 미러만 담당 (AgentEvent + *Event + VizHint). 코드 내 `// LOCKED:` 주석으로 박제됨.
+4. **AS현안 4턴 회귀** — 본 phase 미수행. **Phase 9 종료 후 supervisor/사용자 수동 검증** (Fix 1 sticky + Fix 2 history + Fix 3 row meta + Fix 4 prompt + 한글 가드 종합 효과).
+
+---
+
+## 8. Locks — 현재 활성 잠금 (Locks Registry)
+
+위임 명세 작성 시 본 표를 인용. 잠금 단위는 **파일 통째 X — section/symbol 명시**.
+
+| Scope | 위치 | 잠금 사유 | 만료 |
+|---|---|---|---|
+| `AgentEvent` union + `*Event` 클래스 + `VizHint` | `frontend/src/design/types/events.ts` | backend SSE 미러 무결성 | 영구 (backend SSE 변경 시 동기화) |
+| `ReportSchema` / `ReportBlock` / `DataRef` | `frontend/src/design/types/report.ts` (전체) | 9.x 인터페이스 계약 (frontend ↔ backend pydantic mirror) | 9.x 종료 시 |
+| `ViewBundle` / `ViewBlockSpec` | `frontend/src/design/types/view.ts` (전체) | 9.x 인터페이스 계약 | 9.x 종료 시 |
+| `BuildReportTool` 인터페이스 (input/output) | `backend/tools/build_report/{tool.py, schema.py}` | 9.x 인터페이스 계약 | 9.x 종료 시 |
+| `BuildViewTool` 인터페이스 (input/output) | `backend/tools/build_view/{tool.py, schema.py}` | 9.x 인터페이스 계약 | 9.x 종료 시 |
+| design/components/report/* props | `frontend/src/design/components/report/` | 9.x 동안 Front/View 한시 권한 (props 변경은 supervisor 합의) | 9.x 종료 시 |
+
+### 영역 권한 (영구 — agent-prompts에 박제됨)
+
+- design/ ↔ framework/ 의존: framework는 design import 가능, design은 framework import 금지 (TweaksPanel 1 예외)
+- per-role 영역: `backend/` (BackEnd Infra / DB Domain Manager), `frontend/src/framework/` (Front/View), `frontend/src/design/` (Claude Design — optional, 본 9.x는 Front/View 한시 권한)
+
+### 잠금 정책 (운영 메모)
+
+- **위임 명세에 잠금 단위 명시**: "X 파일 통째 변경 금지" 회피. "X 파일 안의 Y symbol/section만 변경 금지" 또는 "X 파일의 일반 영역은 자유".
+- **충돌 발생 시 해결 우선순위**: 1) 우회 (EnrichedChatMessage 같은 framework 측 확장) → 머지 가능. 2) 충돌 자체를 구조적 리팩터로 해소 (events.ts 도메인 분리 같은) → 미래 충돌도 예방.
+- **잠금 추가/만료 시점**: supervisor가 본 §8 표를 갱신.
 
