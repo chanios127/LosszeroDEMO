@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,9 @@ from .schema import BLOCK_COMPONENT_MAP, ViewBlockSpec, ViewBundle
 logger = logging.getLogger(__name__)
 
 _DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
+
+# Strip qwen-style <think>...</think> reasoning blocks before json.loads.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 _AXIS_SYSTEM_PROMPT = """\
 Given a chart's viz_hint and available column names, return a JSON object with \
@@ -126,6 +130,10 @@ class BuildViewTool(Tool):
                     return _fallback_axis(viz_hint, col_names)
 
             raw = "".join(collected).strip()
+            # Strip reasoning blocks before parse
+            raw = _THINK_RE.sub("", raw).strip()
+            if "<think>" in raw or "</think>" in raw:
+                raw = raw.replace("<think>", "").replace("</think>", "").strip()
             if raw.startswith("```"):
                 lines = raw.split("\n")
                 if lines[-1].strip() == "```":

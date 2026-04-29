@@ -1,6 +1,6 @@
 import type { AgentEvent } from "../types/events";
 import { Dot } from "./primitives";
-import { IconCheck, IconSpinner } from "./icons";
+import { IconAlert, IconCheck, IconSpinner } from "./icons";
 
 export interface SubAgentProgressProps {
   events: AgentEvent[];
@@ -9,10 +9,19 @@ export interface SubAgentProgressProps {
 
 type Stage = {
   name: string;
-  status: "running" | "complete";
+  status: "running" | "complete" | "error";
   latestStage?: string;
   outputSummary?: string;
 };
+
+const STAGE_LABEL: Record<string, string> = {
+  build_report: "분석 보고서 생성",
+  build_view: "시각화 구성",
+};
+
+function labelFor(name: string): string {
+  return STAGE_LABEL[name] ?? name;
+}
 
 function deriveStages(events: AgentEvent[]): Stage[] {
   const stages = new Map<string, Stage>();
@@ -27,7 +36,15 @@ function deriveStages(events: AgentEvent[]): Stage[] {
       if (s) stages.set(event.name, { ...s, latestStage: event.stage });
     } else if (event.type === "subagent_complete") {
       const s = stages.get(event.name);
-      if (s) stages.set(event.name, { ...s, status: "complete", outputSummary: event.output_summary });
+      if (s) {
+        // backend (loop.py) prefixes failure summaries with "Error:" — branch.
+        const isError = event.output_summary.startsWith("Error:");
+        stages.set(event.name, {
+          ...s,
+          status: isError ? "error" : "complete",
+          outputSummary: event.output_summary,
+        });
+      }
     }
   }
 
@@ -39,7 +56,8 @@ export function SubAgentProgress({ events, isStreaming }: SubAgentProgressProps)
   if (stages.length === 0) return null;
 
   if (!isStreaming) {
-    const names = stages.map((s) => s.name).join(", ");
+    const names = stages.map((s) => labelFor(s.name)).join(", ");
+    const hasError = stages.some((s) => s.status === "error");
     return (
       <div
         style={{
@@ -52,17 +70,26 @@ export function SubAgentProgress({ events, isStreaming }: SubAgentProgressProps)
           borderRadius: 6,
         }}
       >
-        <IconCheck
-          width={12}
-          height={12}
-          style={{ color: "var(--success)", flexShrink: 0 }}
-        />
+        {hasError ? (
+          <IconAlert
+            width={12}
+            height={12}
+            style={{ color: "var(--danger)", flexShrink: 0 }}
+          />
+        ) : (
+          <IconCheck
+            width={12}
+            height={12}
+            style={{ color: "var(--success)", flexShrink: 0 }}
+          />
+        )}
         <span
           className="mono"
           style={{ fontSize: 11, color: "var(--text-faint)" }}
         >
-          {stages.length} sub-agent{stages.length !== 1 ? "s" : ""} complete:{" "}
-          {names}
+          {hasError
+            ? `Sub-agent error: ${names}`
+            : `${stages.length} sub-agent${stages.length !== 1 ? "s" : ""} complete: ${names}`}
         </span>
       </div>
     );
@@ -109,6 +136,12 @@ export function SubAgentProgress({ events, isStreaming }: SubAgentProgressProps)
               height={13}
               style={{ color: "var(--brand-500)", flexShrink: 0 }}
             />
+          ) : stage.status === "error" ? (
+            <IconAlert
+              width={13}
+              height={13}
+              style={{ color: "var(--danger)", flexShrink: 0 }}
+            />
           ) : (
             <IconCheck
               width={13}
@@ -122,22 +155,33 @@ export function SubAgentProgress({ events, isStreaming }: SubAgentProgressProps)
               color:
                 stage.status === "running"
                   ? "var(--text-strong)"
-                  : "var(--text-muted)",
+                  : stage.status === "error"
+                    ? "var(--danger)"
+                    : "var(--text-muted)",
               fontWeight: stage.status === "running" ? 500 : 400,
             }}
           >
-            {stage.name}
+            {labelFor(stage.name)}
           </span>
           {stage.status === "running" && stage.latestStage && (
             <span style={{ color: "var(--text-faint)", fontSize: 11 }}>
               — {stage.latestStage}
             </span>
           )}
-          {stage.status === "complete" && stage.outputSummary && (
-            <span style={{ color: "var(--text-faint)", fontSize: 11 }}>
-              — {stage.outputSummary}
-            </span>
-          )}
+          {(stage.status === "complete" || stage.status === "error") &&
+            stage.outputSummary && (
+              <span
+                style={{
+                  color:
+                    stage.status === "error"
+                      ? "var(--danger)"
+                      : "var(--text-faint)",
+                  fontSize: 11,
+                }}
+              >
+                — {stage.outputSummary}
+              </span>
+            )}
           {stage.status === "running" && (
             <span style={{ marginLeft: "auto" }}>
               <Dot tone="brand" pulse />

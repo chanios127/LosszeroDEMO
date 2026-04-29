@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,11 @@ _DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="ut
 # Threshold for switching from embed to ref mode
 _EMBED_MAX_ROWS = 1000
 _EMBED_MAX_BYTES = 100_000  # ~100 KB
+
+# Reasoning model chain-of-thought marker (qwen-style). Some LM Studio models emit
+# `<think>...</think>` blocks before the actual JSON payload despite system prompt
+# instructions. Strip defensively before json.loads.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 _REPORT_SYSTEM_PROMPT = """\
 You are a data analyst. Given the user's intent and query result data, produce a \
@@ -195,6 +201,18 @@ class BuildReportTool(Tool):
                 raise RuntimeError(f"LLM error during build_report: {event.message}")
 
         raw = "".join(collected).strip()
+
+        # Strip <think>...</think> reasoning blocks (qwen-style)
+        raw = _THINK_RE.sub("", raw).strip()
+        # Some models leave dangling unclosed <think> at the start — drop until
+        # the first JSON-looking character.
+        if raw.startswith("<think>") and "</think>" not in raw:
+            # Unclosed think block — give up on inline parse, keep raw as-is so
+            # the retry path captures it in error context.
+            pass
+        elif "<think>" in raw or "</think>" in raw:
+            # Asymmetric residue — strip any remaining tags conservatively.
+            raw = raw.replace("<think>", "").replace("</think>", "").strip()
 
         # Strip markdown fences if present
         if raw.startswith("```"):
