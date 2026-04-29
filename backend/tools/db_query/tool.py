@@ -29,6 +29,43 @@ def _assert_read_only(sql: str) -> None:
         )
 
 
+# Korean character detection (Hangul syllables + Jamo)
+_KOREAN = re.compile(r"[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]+")
+
+
+def _extract_select_clause(sql: str) -> str:
+    """Extract SELECT...FROM substring (first match only)."""
+    m = re.search(r"\bSELECT\b(.*?)\bFROM\b", sql, re.IGNORECASE | re.DOTALL)
+    return m.group(1) if m else ""
+
+
+def _strip_aliases(select_clause: str) -> str:
+    """Remove ``AS <alias>`` patterns so only source column identifiers remain."""
+    return re.sub(
+        r"\bAS\s+(\[[^\]]+\]|\"[^\"]+\"|`[^`]+`|\w+)",
+        "",
+        select_clause,
+        flags=re.IGNORECASE,
+    )
+
+
+def _assert_no_korean_in_select(sql: str) -> None:
+    """Reject SELECT queries that use Korean column names (likely hallucinated).
+
+    Aliases via ``AS [한글명]`` are allowed — only source identifiers are checked.
+    """
+    select_part = _extract_select_clause(sql)
+    if not select_part:
+        return  # No SELECT...FROM found — other guards will catch issues
+    stripped = _strip_aliases(select_part)
+    if _KOREAN.search(stripped):
+        raise ValueError(
+            "Korean column name detected in SELECT clause (outside alias). "
+            "Likely hallucination — use the exact column name from `list_tables` "
+            "or the domain schema. Aliases via `AS [한글명]` are allowed."
+        )
+
+
 class DBQueryTool(Tool):
     @property
     def name(self) -> str:
@@ -65,6 +102,7 @@ class DBQueryTool(Tool):
         params: list = input.get("params", [])
 
         _assert_read_only(sql)
+        _assert_no_korean_in_select(sql)
 
         async with get_connection() as conn:
             loop = asyncio.get_event_loop()
