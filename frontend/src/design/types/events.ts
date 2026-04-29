@@ -41,13 +41,33 @@ export interface ContinuePromptEvent {
   message: string;
 }
 
+export interface SubAgentStartEvent {
+  type: "subagent_start";
+  name: string;
+}
+
+export interface SubAgentProgressEvent {
+  type: "subagent_progress";
+  name: string;
+  stage: string;
+}
+
+export interface SubAgentCompleteEvent {
+  type: "subagent_complete";
+  name: string;
+  output_summary: string;
+}
+
 export type AgentEvent =
   | ToolStartEvent
   | ToolResultEvent
   | LLMChunkEvent
   | FinalEvent
   | ErrorEvent
-  | ContinuePromptEvent;
+  | ContinuePromptEvent
+  | SubAgentStartEvent
+  | SubAgentProgressEvent
+  | SubAgentCompleteEvent;
 
 export interface ChatMessage {
   id: string;
