@@ -1,6 +1,7 @@
 # Supervisor Snapshot — 세션 인계용 일시 상태
 
 > 작성: 2026-04-29 (Phase 8 종료 직후, Phase 9 plan 승인 시점)
+> 갱신: 2026-04-29 (Debug 평가 결과 흡수 — §6 추가)
 > 본 파일은 직전 supervisor 세션이 다음 supervisor 세션에 넘기는 **transient 상태 스냅샷**.
 > cold-start 절차(HANDOFF.md)와는 분리되며, Phase 9 착수 시점에는 이 파일을 우선 읽는다.
 
@@ -105,3 +106,36 @@ final (인라인 ReportContainer 또는 일반 답변)
 - **sub-phase 9.1 / 9.2 병렬 시 같은 워크트리 사용 금지** — 위 사고 재발 방지.
 - **컴포넌트 카탈로그 부족** — 시계열·heatmap은 plan 9.1 범위 밖. ROADMAP 후속 항목으로 둠.
 - **multi-stage 응답 지연** — 스트리밍 점진 표시(subagent_* 이벤트 + 단계별 UI) 필수.
+
+---
+
+## 6. Phase 9 위임 시 흡수할 Debug 분석 결과 (2026-04-29 추가)
+
+직전 Debug 사이클에서 LM Studio 4턴 시나리오(AS현안 다중턴) 정합도 평가 완료. 본질 원인 2종 규명:
+
+### 진단 요약
+- **후속턴 도메인 스키마 누락** (`backend/main.py:314-315`, `backend/domains/loader.py:182-210`): `/api/query`가 매 호출마다 `match_domain(body.query)`를 새로 실행. follow-up 질의에는 groupware keywords 미포함 → score=0 → `domain_ctx=""` → 시스템 프롬프트에 도메인 schema 누락. `system_total_len` Q1=9785 → Q2~Q4=0.
+- **도구 실행 history 폐기** (`backend/main.py:500`): `_conversations[session_id]`에 final 텍스트만 저장. AgentLoop 내부의 `assistant(tool_use)` + `tool(result)` 메시지는 턴 종료 시 폐기. → LLM은 markdown 표 헤더(거래처명/현안제목/접수일시)만 보고 컬럼명 환각 → SQL `[현안제목] LIKE ...` 같은 hallucination 2회 후 포기.
+
+### 처리 분배
+
+**Debug 세션이 자율 C로 즉시 처리** (Phase 9 영역 무충돌):
+- **Fix 1 — 세션 점착 도메인** (`main.py` 신규 dict + `match_domain` fallback). 본질 절반 해결. 효과 즉각.
+- **Fix 5 — groupware keywords 보강** (`groupware/meta.json` 데이터 추가).
+- 회귀 명세: 동일 시나리오 4턴 재현 → Q3 SQL이 `wb_*` 실제 컬럼명 사용 + Q2~Q4 system_total_len > 0 유지.
+
+**Phase 9 위임 시 흡수해야 할 것** (새 supervisor가 sub-phase 9.4·9.5 위임 명세 작성 시 반드시 포함):
+
+| Debug Fix | 흡수 위치 | 통합 이유 |
+|---|---|---|
+| **Fix 2** (Tool history 보존) — `main.py:500` `_conversations` 저장 형식 풍부화. AgentLoop가 사용한 messages 리스트(시스템 제외)를 복사해 다음 턴이 `assistant(tool_use)` + `tool(result)` 페어를 그대로 보도록. **주의**: MAX_HISTORY 트리밍이 `tool_use`/`tool_result` 페어를 깨면 OpenAI 400 에러 → 페어 단위로 자르는 가드 필수. | **9.5 (persistence)** | 9.5는 ReportSchema+ViewBundle 메시지 메타데이터 첨부. Fix 2와 동일 저장소(`_conversations`) 재설계 영역. 두 변경을 함께 해야 충돌 회피. |
+| **Fix 3** (도구 결과에 행수 meta prepend) — `loop.py:199-202` 도구 결과 wrapping에 `[meta] rows={N}` prepend. LLM이 자체 truncation할 때 명시적 단서 제공. | **9.4 (AgentLoop 도구 등록 + SSE subagent_*)** | 9.4가 loop.py 도구 wrapping 영역 직접 수정. 같은 함수 부근. 함께 처리해야 효율적. |
+| **Fix 4** (system_base.md 회복 가이드) — "쿼리가 'Invalid column name' 에러를 반환하면 컬럼명을 추측하지 말고 도메인 스키마 또는 list_tables 재참조" 한 줄 추가. | **9.4 (시스템 프롬프트 가이드)** | 9.4가 신 도구(build_report/build_view) 호출 가이드 추가하는 시점. system_base.md를 어차피 만짐. 함께 다듬는 게 합리적. |
+
+### 새 supervisor 액션 (위임 명세 작성 시)
+- 9.4 위임 명세에 Fix 3 + Fix 4 명시 (도구 결과 wrapping에 행수 meta + system_base.md 회복 가이드).
+- 9.5 위임 명세에 Fix 2 명시 (ReportSchema+ViewBundle 첨부 + tool_use/tool_result history 보존을 동일 저장 형식으로 통합 설계).
+- 회귀 점검에 위 Debug 시나리오(4턴 AS현안) 재현 케이스 포함.
+
+### 참조
+- Debug 세션의 평가 보고는 본 사이클 종료 후 별도 보존되지 않음 (인수인계는 본 §6에 압축됨). 필요 시 git log에서 Debug 사이클 commit 메시지 또는 본 §6을 ground truth로.
