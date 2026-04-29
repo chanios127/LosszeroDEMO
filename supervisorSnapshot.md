@@ -170,3 +170,28 @@ final (인라인 ReportContainer 또는 일반 답변)
 - `chart.data_ref`는 `data_refs[]` 인덱스(int)
 - worktree 분리 강제 (`git worktree add ../LosszeroDEMO-backend-infra -b agent/backend-infra origin/main`)
 
+### 9.2 — `build_report` 도구 + ReportSchema pydantic mirror (완료, 2026-04-29)
+
+- 머지 커밋: `--no-ff` merge of `agent/backend-infra` into main
+- 신설 파일:
+  - `backend/tools/build_report/schema.py` — ReportSchema/ReportBlock/DataRef pydantic 1:1 mirror, `_validate_data_ref_indices` model_validator로 chart.data_ref / highlight.related_data 인덱스 범위 체크
+  - `backend/tools/build_report/tool.py` — BuildReportTool (Tool ABC), LLMProvider injectable (`None` 시 RuntimeError), 1회 retry with validation error context, markdown fence strip
+  - `backend/tools/build_report/description.md` — LLM-facing 호출 가이드
+  - `backend/tools/build_report/__init__.py` — re-export
+
+#### 박제된 결정 / 9.4·9.5 위임 시 인용
+
+1. **Embed-only 모드** — 9.2의 `_build_data_refs`는 모든 `data_results`를 embed로 변환. 임계 100KB / 1000 row는 logging만. **ref 모드 hookup은 9.4(orchestrator 메모리) + 9.5(persistence 시 ref→embed hydrate 후 저장) 영역**.
+2. **Provider inject 시점** — `BuildReportTool(llm=provider)`. 9.4 AgentLoop 등록 시 provider 전달 필수. provider 미전달로 등록되면 execute 시 RuntimeError.
+3. **LLM 호출 횟수** — 현재 1회 + 검증 실패 시 1회 재시도 = 최대 2회. 분석/요약 분리 여부는 9.4 운영 관찰 후 결정.
+4. **markdown fence strip** — LLM이 ```json ... ``` 형태로 감싸는 케이스 방어. 9.3 build_view에도 동일 패턴 권장.
+5. **Summary.insights 길이** — pydantic 레벨 제약 없음(`Field(default_factory=list)`). 프롬프트만 "2~5 권장". 운영 관찰 후 strict 필요 시 `Field(min_length=2, max_length=5)` 추가 검토.
+
+#### 9.4 위임 시 헤드업
+- `BuildReportTool(llm=<provider>)` 형태로 AgentLoop에 등록 — provider 전달 누락 금지
+- `system_base.md` 가이드에 "build_report 호출 조건" 추가 (description.md 본문과 일관)
+- Debug Fix 3 (`loop.py:199-202` 도구 결과 wrapping에 `[meta] rows={N}` prepend) 함께 흡수
+- Debug Fix 4 (system_base.md "Invalid column name 시 컬럼 추측 금지" 한 줄) 함께 흡수
+- SSE `subagent_start` / `subagent_progress` / `subagent_complete` 이벤트 신설
+- worktree 분리 강제 (`git worktree add ../LosszeroDEMO-backend-infra -b agent/backend-infra origin/main`)
+
