@@ -22,12 +22,16 @@
 4. 문서 관리: `SPEC.md`, `ARCHITECTURE.md`, `ROADMAP.md`, 본 `HANDOFF.md` 항상 최신화
 5. Git 커밋 분할 + per-agent 브랜치 머지 (논리적 단위로)
 6. 사용자 의사결정 보좌 (트레이드오프 정리, 옵션 제시)
+7. **위임 프롬프트 출력 형식**: 사용자가 항상 수동으로 paste하므로 supervisor는 위임 명세를 **단일 코드 블록**으로 출력한다. 메타 설명·옵션은 코드 블록 밖에 두고, paste 대상 본문만 코드 블록 안에.
+8. **역할별 분리**: 한 사이클에 N 역할 위임이 필요하면 **코드 블록 N개로 분리**하여 출력. 한 코드 블록에 두 역할 명세를 섞어 적지 않는다.
+9. **`/clear` 안전 운영**: 매 사이클 종료 시점이 가장 안전한 clear 시점. 진입 전 §"`/clear` 전 체크리스트" (아래 검수 체크리스트 안) 통과 필수. supervisor는 in-conversation 결정 사항을 항상 디스크(supervisorSnapshot.md / plans/) 박제 후 clear.
 
 #### 하지 말 것
 - 작은 수정 외에는 직접 코드 작성 X (위임 우선)
 - 사용자 승인 없이 큰 구조 변경 X
 - 검증 없이 통합 X (TypeScript 체크 등 최소 점검)
 - 컨텍스트 낭비 (필요 시 Explore 서브에이전트 활용)
+- 한 코드 블록에 여러 역할 위임 명세를 섞어 출력 X
 
 ---
 
@@ -116,8 +120,9 @@
 
 ```
 1. Supervisor + Human  →  기획 / 명세 / 구조 작성
-2. Supervisor          →  Toss 프롬프트 작성 + 위임 (별도 세션)
-                          (`agent-prompts/<role>.md` cold start + 위임 명세 첨부)
+2. Supervisor          →  위임 명세를 코드 블록으로 출력 (역할별 분리, 한 사이클 N 역할 → N개 코드 블록).
+                          사용자가 출력된 코드 블록을 해당 역할 세션에 수동 paste.
+                          agent-prompts/<role>.md cold start와 함께 첨부.
 3. Agent               →  자기 브랜치(agent/<role>)에서 구현 + 변경 로그(.md, supervisor-injectable) 회신
 4. Supervisor + Human  →  검수 + main으로 머지 + Project Master(SPEC/ARCH/ROADMAP) 갱신
 ```
@@ -148,6 +153,14 @@
 - [ ] 논리적 단위로 커밋 분할 (단일 관심사 원칙)
 - [ ] 문서(SPEC/ARCHITECTURE/ROADMAP) 동기화
 - [ ] 푸시 전 사용자 확인
+
+#### `/clear` 전 체크리스트 (supervisor 측)
+- [ ] git status 클린 (미커밋 변경 0)
+- [ ] 진행 중 작업의 핵심 결정 사항이 supervisorSnapshot.md / plans/ / SPEC / ROADMAP 중 하나에 박제됨
+- [ ] 사용자에게 답변 대기 중인 질문 0 (있으면 답 받고 박제 후 clear)
+- [ ] 진행 중 위임의 "회신 받으면 어떻게 할지" 의도가 디스크에 박제됨 (supervisorSnapshot.md §6 또는 plans/)
+- [ ] 미해결 사용자 결정사항 0
+- 통과 못 하면: clear 자제하고 컨텍스트 한도까지 사용 권장 (체크리스트는 사이클 자연 종료 시점 기준)
 
 ---
 
@@ -214,8 +227,10 @@
 ---
 
 ### 세션 종료 패턴
-컨텍스트 한도 임박 시:
+컨텍스트 한도 임박 시 또는 사이클 자연 종료 시:
 1. 미커밋 변경 정리 + 커밋
 2. SPEC/ARCHITECTURE/ROADMAP 갱신
 3. **본 HANDOFF.md를 후임 세션용으로 갱신** (현재 상태 반영, 최종 갱신일 변경)
-4. 사용자에게 다음 세션 시작 가이드 전달
+4. supervisorSnapshot.md 갱신 — 진행 중 위임/대기 상태/clear 직후 새 세션이 알아야 할 사항 박제
+5. 사용자에게 다음 세션 시작 가이드 전달 (cold-start 프롬프트 + 우선 읽을 파일 순서)
+6. `/clear` 전 §체크리스트(위 통합 검수 다음) 통과 확인 → clear OK
