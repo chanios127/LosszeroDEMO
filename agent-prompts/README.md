@@ -53,21 +53,35 @@
 ### 명명 규칙
 `agent/<role>` (예: `agent/backend-infra`, `agent/db-domain`, `agent/front-view`, `agent/debug`)
 
-### 자율 분기 시퀀스 (작업 위임을 받은 시점에만 실행)
+### 자율 분기 시퀀스 (작업 위임을 받은 시점에만 실행) — git worktree 의무
 
 ```bash
 git fetch origin
-git checkout main && git pull --ff-only
-git checkout -b agent/<role>     # 없으면 생성, 있으면: git switch agent/<role>
+git worktree add ../LosszeroDEMO-<role> -b agent/<role> origin/main
+cd ../LosszeroDEMO-<role>
+# 이후 모든 작업은 이 디렉토리에서. supervisor 워크트리(C:\ParkwooDevProjects\LosszeroDEMO)는 절대 건드리지 X
 ```
+
+`<role>` = `backend-infra` / `db-domain` / `front-view` / `debug` 중 하나.
 
 ### 운영 원칙
 
-- **세션 시작 시점**에는 브랜치를 따지 않는다 — main 그대로 시작 OK
-- **stand-by / verify-only** 세션은 분기 자체 불필요
-- **작업 위임을 받은 시점**에만 위 시퀀스로 fresh base 분기
+- **세션 시작 시점**에는 분기 자체 불필요 — supervisor 워크트리에서 cold-start 절차만 수행 (read-only)
+- **stand-by / verify-only** 세션은 분기·worktree 추가 불필요
+- **작업 위임을 받은 시점**에만 위 시퀀스로 fresh worktree 분기
 - 작업 후: `git push -u origin agent/<role>` → supervisor가 검수 후 main으로 머지
-- supervisor가 첫 상황보고의 `git branch --show-current` 값으로 위반 감지
+- 작업 종료 후: `cd C:\ParkwooDevProjects\LosszeroDEMO && git worktree remove ../LosszeroDEMO-<role>` 으로 정리
+- supervisor가 첫 상황보고의 `git branch --show-current` 및 작업 디렉토리 값으로 위반 감지
+
+### 절대 금지
+
+- **supervisor 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)에서 `git checkout -b agent/<role>` 또는 `git checkout agent/<role>` 실행 금지** — supervisor의 main HEAD를 변경시켜 사고 유발. Phase 8·9 사이클에서 3회 발생한 사고의 근본 원인. 반드시 `git worktree add`로 별도 디렉토리 사용.
+
+### worktree 환경 주의
+
+- **포트 충돌**: 두 worktree에서 `uvicorn` / `pnpm dev` 동시 실행 시 포트 점유. 한쪽만 dev 서버 띄우거나 포트 분리.
+- **`.env` 공유 안 됨**: 각 worktree에 별도 `.env` 복사 필요 (worktree add 후 1회).
+- **worktree 정리 필수**: 종료 후 `git worktree remove` 안 하면 디스크 누적 + ghost reference.
 
 ### 세션 자율성 vs 사용자 부담
 
