@@ -1,0 +1,70 @@
+{
+  "title": "월간 손실율 리포트 — 2026-04",
+  "generated_from": "agent_chat:abc123 / domain=mes_3z",
+  "summary": {
+    "headline": "4월 라인 B의 불량률이 전월 대비 1.8%p 상승했습니다. 가장 큰 기여 공정은 '도금'이며, 즉시 점검이 권고됩니다.",
+    "insights": [
+      "라인 B 도금 공정의 불량률이 6.4% → 8.2%로 상승",
+      "라인 A·C는 안정 구간(±0.3%p) 유지",
+      "주말 야간조 운영분에서 이상치 집중 관측"
+    ]
+  },
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "## 분석 요약\n\n4월 데이터를 기반으로 라인별 불량률을 비교했습니다. **라인 B**의 도금 공정에서 유의미한 상승이 관측되었습니다.\n\n- 분석 기간: 2026-04-01 ~ 2026-04-28\n- 비교 기준: 직전 30일 이동 평균"
+    },
+    {
+      "type": "metric",
+      "label": "전체 불량률",
+      "value": 4.7,
+      "delta": "+1.1%p",
+      "trend": "up",
+      "unit": "%"
+    },
+    {
+      "type": "metric",
+      "label": "최대 불량 라인",
+      "value": "라인 B",
+      "delta": "8.2%",
+      "trend": "down"
+    },
+    {
+      "type": "chart",
+      "viz_hint": "bar_chart",
+      "data_ref": 0,
+      "title": "라인별 평균 불량률 (4월)"
+    },
+    {
+      "type": "highlight",
+      "level": "alert",
+      "message": "라인 B 도금 공정의 불량률이 임계치(7.0%)를 상회했습니다. 야간조 운영 검토 필요."
+    },
+    {
+      "type": "highlight",
+      "level": "warning",
+      "message": "라인 C 일부 자재 로트(LOT-2026-0412)에서 미세한 표면 결함 패턴이 감지됨."
+    },
+    {
+      "type": "highlight",
+      "level": "info",
+      "message": "이 리포트는 30일 이동 평균을 기준으로 산출되었습니다. 단기 변동은 제외됩니다."
+    }
+  ],
+  "data_refs": [
+    {
+      "id": 0,
+      "mode": "embed",
+      "rows": [
+        { "line": "라인 A", "defect_rate": 3.1 },
+        { "line": "라인 B", "defect_rate": 8.2 },
+        { "line": "라인 C", "defect_rate": 3.4 },
+        { "line": "라인 D", "defect_rate": 4.9 }
+      ],
+      "columns": [
+        { "name": "line", "type": "text" },
+        { "name": "defect_rate", "type": "number" }
+      ]
+    }
+  ]
+}
