@@ -32,6 +32,7 @@
 - 검증 없이 통합 X (TypeScript 체크 등 최소 점검)
 - 컨텍스트 낭비 (필요 시 Explore 서브에이전트 활용)
 - 한 코드 블록에 여러 역할 위임 명세를 섞어 출력 X
+- **main 외 브랜치 checkout 금지** (cherry-pick·revert·merge 모두 main 위에서. §"main 고정 원칙" 참조)
 
 ---
 
@@ -177,15 +178,31 @@
 - 푸시 거부 시 (시크릿 검출): 새 git init이 아닌 git filter-branch 또는 BFG 사용 권장
 
 ### 브랜치 전략 (per-agent feature)
-- 각 agent 세션은 작업 위임을 받으면 **자율로** fresh base 분기:
+- 각 agent 세션은 작업 위임을 받으면 **자율로** fresh base 분기 (별도 worktree로):
   ```
   git fetch origin
-  git checkout main && git pull --ff-only
-  git checkout -b agent/<role>
+  git worktree add ../LosszeroDEMO-<role> -b agent/<role> origin/main
+  cd ../LosszeroDEMO-<role>
   ```
 - 작업 후 `git push -u origin agent/<role>` → supervisor가 main으로 머지
+- 종료 시 `git worktree remove ../LosszeroDEMO-<role>` 으로 정리
 - supervisor 자신의 문서 작업(SPEC/ARCHITECTURE/ROADMAP/HANDOFF)은 main 직접 갱신 (별도 브랜치 불필요)
 - 자세한 운영 규칙은 `agent-prompts/README.md`
+
+### main 고정 원칙 (supervisor 절대 규칙)
+
+**왜**: Phase 8·9 사이클에서 supervisor와 agent 세션이 같은 워크트리를 공유하다 보니, agent의 `git checkout -b agent/<role>`이 워크트리 HEAD를 바꿔 supervisor의 commit이 잘못된 브랜치에 안착하는 사고가 3회 발생. 근본 원인 차단.
+
+**규칙**:
+1. supervisor 세션의 워크트리(`C:\ParkwooDevProjects\LosszeroDEMO`)는 **항상 `main` 브랜치**. 다른 브랜치로 `git checkout` 절대 금지.
+2. **모든 git 동작 전 `git branch --show-current` 자가 점검**. `main`이 아니면 즉시 `git checkout main` (uncommitted change 있으면 stash 후 검토).
+3. supervisor의 cherry-pick·revert·merge·commit 등 **모든 git 작업은 main 위에서**.
+4. 다른 브랜치 내용 확인이 필요하면 `git show <branch>:<path>`, `git log <branch>`, `git diff main..<branch>` 등 read-only 명령만 사용. 절대 checkout X.
+
+**agent 측 의무**: 위 §브랜치 전략의 `git worktree add`로 **별도 디렉토리**에서 작업 → supervisor 워크트리 HEAD 무영향. 같은 디렉토리에서 `git checkout -b` 사용 금지.
+
+**위반 시 복구 절차**:
+- 잘못된 브랜치에서 commit이 발견되면: `git checkout main` → `git cherry-pick <wrong-commit>` → `git branch -f <wrong-branch> origin/<wrong-branch>` (또는 적절히 reset)
 
 ---
 
