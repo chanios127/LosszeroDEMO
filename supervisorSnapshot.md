@@ -119,9 +119,10 @@ final (인라인 ReportContainer 또는 일반 답변)
 
 ### 처리 분배
 
-**Debug 세션이 자율 C로 즉시 처리** (Phase 9 영역 무충돌):
-- **Fix 1 — 세션 점착 도메인** (`main.py` 신규 dict + `match_domain` fallback). 본질 절반 해결. 효과 즉각.
-- **Fix 5 — groupware keywords 보강** (`groupware/meta.json` 데이터 추가).
+**Debug 세션이 자율 C로 처리** (Phase 9 영역 무충돌):
+- **Fix 1 — 세션 점착 도메인** (`main.py` 신규 dict + `match_domain` fallback). 본질 절반 해결. 효과 즉각. **머지 완료 (e4bf49a → main b36f735)**.
+- ~~**Fix 5 — groupware keywords 보강**~~ — **revert됨 (0772900)**. 추가한 9개 generic 토큰(거래처/업체/고객/요청/요청자/담당자/긴급/작업유형/처리상태)이 향후 MES 도메인 추가 시 score 누적 오매칭 위험 큼 + Fix 1이 follow-up을 sticky로 처리하므로 marginal value 0. 본 사이클에서 Debug 자체 revert 권고 → supervisor 수용.
+- AS현안 case-test 1 평가 보고서(`case-test 1.md`)는 ground-truth로 유지.
 - 회귀 명세: 동일 시나리오 4턴 재현 → Q3 SQL이 `wb_*` 실제 컬럼명 사용 + Q2~Q4 system_total_len > 0 유지.
 
 **Phase 9 위임 시 흡수해야 할 것** (새 supervisor가 sub-phase 9.4·9.5 위임 명세 작성 시 반드시 포함):
