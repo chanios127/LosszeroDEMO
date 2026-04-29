@@ -45,6 +45,10 @@ _conversations: dict[str, list[Message]] = {}
 _continue_gates: dict[str, asyncio.Event] = {}
 _continue_results: dict[str, bool] = {}
 _run_tasks: dict[str, asyncio.Task] = {}
+# Sticky domain per session: follow-up turns rarely repeat domain keywords,
+# so without this fallback domain_to_context drops out and the LLM loses
+# schema → hallucinates column names from prior result headers.
+_session_domains: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -310,11 +314,19 @@ async def start_query(body: QueryRequest):
 
     history = _conversations[session_id][-MAX_HISTORY:]
 
-    # Domain matching → schema context injection
+    # Domain matching → schema context injection (sticky per session)
     matched = match_domain(body.query)
-    domain_ctx = domain_to_context(matched) if matched else ""
-    if matched:
+    if matched is not None:
+        _session_domains[session_id] = matched.get("domain", "")
         logger.info("Domain matched: %s for query: %s", matched.get("domain"), body.query[:50])
+    elif session_id in _session_domains:
+        sticky_code = _session_domains[session_id]
+        for d in load_all_domains():
+            if d.get("domain") == sticky_code:
+                matched = d
+                logger.info("Domain sticky: %s for query: %s", sticky_code, body.query[:50])
+                break
+    domain_ctx = domain_to_context(matched) if matched else ""
 
     # Append user message to conversation history IMMEDIATELY so that
     # (a) concurrent/quickly-fired follow-ups see it and
@@ -592,6 +604,7 @@ async def cancel_session(session_id: str):
 @app.delete("/api/session/{session_id}")
 async def clear_session(session_id: str):
     _conversations.pop(session_id, None)
+    _session_domains.pop(session_id, None)
     keys_to_remove = [k for k in _sessions if k.startswith(session_id)]
     for k in keys_to_remove:
         _sessions.pop(k, None)
