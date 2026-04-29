@@ -1,6 +1,6 @@
 # LLM Harness — 시스템 명세서
 
-> 최종 갱신: 2026-04-17 (Phase 6 완료 시점)
+> 최종 갱신: 2026-04-29 (Phase 7 완료 시점)
 
 MSSQL ERP/MES/그룹웨어 데이터를 자연어로 조회하고 시각화하는 에이전트 시스템.
 
@@ -210,7 +210,7 @@ Step 1: 데이터 수집
 Step 2: 시각화 구상
   └─ /api/suggest_viz (샘플 5행) → viz_hint + x/y 축 추천 → SwitchableViz 미리보기
 
-Step 3: 위젯 저장 (Phase 6 예정)
+Step 3: 위젯 저장 (미구현 — ROADMAP §A 후보)
 ```
 
 ---

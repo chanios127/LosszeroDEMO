@@ -6,12 +6,16 @@
 
 ## ✅ Phase 7에서 처리됨 (도메인 레지스트리 폴더화 + join 1급화)
 
-- **도메인 폴더 형식 도입** — `groupware.json` → `groupware/{meta,tables,joins,stored_procedures}.json` 분리. 단일 `*.json` 형식은 하위호환 유지
-- **joins 1급 스키마** — 테이블 하위 `joins[*]` (target/on string) → top-level `joins[*]` 객체 (`from_table`/`to_table`/`from_columns`/`to_columns`/`operators`/`join_type`). composite key + `=`/`<>`/`>`/`<`/`>=`/`<=` 연산자 지원
-- **로더 디렉토리 인식** — `backend/domains/loader.py:_load_directory_omain()` + `load_all_domains()` 디렉토리 순회 추가
-- **`domain_to_context()` top-level joins 직렬화** — `### Join Relationships` 섹션으로 LLM 친화 출력
-- **`build_select` 파서 신설** — `backend/domains/parser.py`. joins 부분집합 → `SELECT ... FROM A LEFT JOIN B ON ...` SQL 자동 재조립. alias / composite ON / CROSS JOIN / 체인 검증
-- **위임 검증 가드** — 각 agent cold-start §1에 추가, 잘못 라우팅된 위임 자동 차단
+**도메인 데이터 구조 개편**:
+- 도메인 폴더 형식 도입 — `groupware.json` → `groupware/{meta,tables,joins,stored_procedures}.json` 분리. 단일 `*.json` 형식은 하위호환 유지
+- joins 1급 스키마 — 테이블 하위 `joins[*]` (target/on string) → top-level `joins[*]` 객체 (`from_table`/`to_table`/`from_columns`/`to_columns`/`operators`/`join_type`). composite key + `=`/`<>`/`>`/`<`/`>=`/`<=` 연산자 지원
+
+**백엔드 코드**:
+- `backend/domains/loader.py` — `_load_directory_domain()` 헬퍼 + `load_all_domains()` 디렉토리 순회. `domain_to_context()`가 top-level joins를 `### Join Relationships` 섹션으로 직렬화. `get_domains_summary()`에 `join_count` 추가
+- `backend/domains/parser.py` 신설 — `build_select(joins, select_cols, use_alias)` joins 부분집합 → `SELECT ... FROM A LEFT JOIN B ON ...` SQL 자동 재조립. alias / composite ON / CROSS JOIN / 체인 검증
+
+**협업 인프라 부산물**:
+- 위임 검증 가드 — 각 agent cold-start §1에 추가. 잘못 라우팅된 위임을 작업 시작 전 차단·재확인하도록 강제. supervisor 측 HANDOFF 체크리스트도 동기화
 
 ## ✅ Phase 6.5에서 처리됨 (협업 인프라)
 
@@ -33,7 +37,7 @@
 
 ---
 
-## 🎯 당장 해야 할 것 (Phase 6 후보)
+## 🎯 다음 트랙 후보 (Phase 8+)
 
 우선순위는 사용자 논의로 결정 예정. 아래는 규모/가치 추정.
 
@@ -243,22 +247,4 @@
 
 ---
 
-## 📌 커밋 이력 스냅샷 (2026-04-17 기준)
-
-```
-[Phase 6 후속 커밋들 — 아래 분할 커밋 참조]
-52763db Update SPEC.md + ROADMAP.md for Phase 5 handoff
-4a083e8 Phase 5: Conversation management + UI Builder scaffold
-79e7e21 Add /api/sql direct endpoint, remove LLM from DataQuery
-493fbf4 Separate DataQuery (direct SQL) from AgentChat (conversation)
-5440a90 Update docs + fix tab session persistence
-5189ebc chore: __pycache__ git 추적 제거 및 .gitignore 정리
-82e2393 fix: 스트리밍 중 유저 스크롤 방해 문제 수정
-0749070 Unify domain registry to schema_registry/domains/*.json
-28d980c Add modular dashboard shell with sidebar navigation
-8041383 Add dashboard layout with results history
-9998fe8 Add visualization guidance to system prompts
-b96c6af Add continue_prompt HITL for max_turns extension
-4684a18 Split domain registry + fix intermediate result bug
-... (이전)
-```
+> 이전 커밋 이력 스냅샷은 `git log`로 직접 확인 (장기 누적되어 ROADMAP에 박제할 가치가 낮음).

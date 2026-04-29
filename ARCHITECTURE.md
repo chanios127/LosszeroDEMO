@@ -1,6 +1,6 @@
 # LLM Harness — Architecture
 
-> 최종 갱신: 2026-04-17 (Phase 6)
+> 최종 갱신: 2026-04-29 (Phase 7)
 
 ## 개요
 
