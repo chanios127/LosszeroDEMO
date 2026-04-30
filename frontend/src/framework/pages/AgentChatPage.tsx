@@ -1,13 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { useConversationStore } from "../hooks/useConversationStore";
 import { useQuickPrompts } from "../hooks/useQuickPrompts";
+import { useReportProposal } from "../hooks/useReportProposal";
 import type { ChatMessage } from "../../design/types/chat";
 import type { ViewBundle } from "../../design/types/view";
 import ChatInput from "../../design/components/ChatInput";
 import MessageThread from "../../design/components/MessageThread";
 import ConversationList from "../../design/components/ConversationList";
 import { ReportContainer } from "../../design/components/report/ReportContainer";
+import {
+  ReportProposalCard,
+  type ReportProposal,
+} from "../../design/components/report/ReportProposalCard";
 
 // Phase 9.5 — split message thread around assistant messages that carry a
 // build_view bundle so a ReportContainer renders inline right below the bubble.
@@ -123,6 +128,34 @@ function AgentChat({
     respondToContinue,
     loadMessages,
   } = useAgentStream();
+
+  const [archiveToast, setArchiveToast] = useState<string | null>(null);
+
+  const showArchiveToast = useCallback((msg: string) => {
+    setArchiveToast(msg);
+    setTimeout(() => setArchiveToast(null), 3000);
+  }, []);
+
+  const { proposal, pending: proposalPending, archive, discard } =
+    useReportProposal({
+      streamKey,
+      onArchived: () => showArchiveToast("📥 보고서가 보관함에 저장되었습니다."),
+    });
+
+  const proposalCardData: ReportProposal | null = proposal
+    ? {
+        idTemp: proposal.id_temp,
+        title: proposal.schema.title,
+        summary: proposal.summary,
+        meta: {
+          blocks: proposal.meta.blocks,
+          dataRefs: proposal.meta.dataRefs,
+          domain: proposal.meta.domain,
+          schemaVersion: proposal.meta.schemaVersion,
+        },
+        tags: [],
+      }
+    : null;
 
   const {
     conversations,
@@ -359,6 +392,50 @@ function AgentChat({
             )}
           </div>
         </div>
+
+        {/* HITL: ReportProposalCard sticky bar above composer */}
+        {proposalCardData && (
+          <div
+            style={{
+              borderTop: "1px solid var(--border-subtle)",
+              background: "var(--bg)",
+              padding: "10px 16px",
+              flexShrink: 0,
+            }}
+          >
+            <div className="mx-auto" style={{ maxWidth: 720 }}>
+              <ReportProposalCard
+                proposal={proposalCardData}
+                onArchive={(_idTemp, edits) => archive(edits)}
+                onDiscard={() => discard()}
+                disabled={proposalPending}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Archive success toast */}
+        {archiveToast && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: 80,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "var(--bg-elev-3)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--r-md)",
+              padding: "8px 16px",
+              fontSize: 13,
+              color: "var(--text-strong)",
+              zIndex: 50,
+              pointerEvents: "none",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            {archiveToast}
+          </div>
+        )}
 
         {/* Input */}
         <div className="mx-auto w-full max-w-3xl">

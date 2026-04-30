@@ -5,7 +5,7 @@ import DashboardPage from "./pages/DashboardPage";
 import DataQueryPage from "./pages/DataQueryPage";
 import AgentChatPage from "./pages/AgentChatPage";
 import UIBuilderPage from "./pages/UIBuilderPage";
-import ReportDemoPage from "./pages/ReportDemoPage";
+import ReportArchivePage from "./pages/ReportArchivePage";
 import { useTweaks } from "./hooks/useTweaks";
 import { useServerDefaults } from "./hooks/useServerDefaults";
 
@@ -47,7 +47,7 @@ export default function App() {
           <UIBuilderPage />
         </div>
         <div className={currentPage === "report-demo" ? "h-full" : "hidden"}>
-          <ReportDemoPage />
+          <ReportArchivePage isVisible={currentPage === "report-demo"} />
         </div>
       </AppShell>
       {showTweaks && (
