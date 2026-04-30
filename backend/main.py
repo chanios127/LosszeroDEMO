@@ -158,6 +158,11 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
     session_id: str | None = None
+    # Optional per-request LLM tuning (forwarded to provider.complete via AgentLoop).
+    # When None, provider falls back to env defaults.
+    max_tokens: int | None = None              # 1000 ~ 32000
+    thinking_enabled: bool | None = None
+    thinking_budget: int | None = None         # 1024 ~ 16000
 
 
 class QueryResponse(BaseModel):
@@ -183,6 +188,21 @@ async def health():
 async def list_domains():
     """Return registered domains for frontend dynamic rendering."""
     return get_domains_summary()
+
+
+@app.get("/api/defaults")
+async def get_defaults():
+    """Provider-aware default tuning values for the frontend tweak panel."""
+    provider = os.environ.get("LLM_PROVIDER", "claude").lower()
+    max_tokens_env = (
+        "CLAUDE_MAX_TOKENS" if provider == "claude" else "LM_STUDIO_MAX_TOKENS"
+    )
+    return {
+        "provider": provider,
+        "max_tokens": int(os.environ.get(max_tokens_env, "10000")),
+        "thinking_budget": int(os.environ.get("CLAUDE_THINKING_BUDGET", "4096")),
+        "thinking_supported": provider == "claude",
+    }
 
 
 class SqlRequest(BaseModel):
@@ -375,6 +395,9 @@ async def start_query(body: QueryRequest):
             max_turns=max_turns,
             domain_context=domain_ctx,
             continue_callback=_continue_callback,
+            max_tokens=body.max_tokens,
+            thinking_enabled=body.thinking_enabled,
+            thinking_budget=body.thinking_budget,
         )
 
         # ── 터미널 로그 상태 ──────────────────────────────────────
@@ -557,16 +580,34 @@ async def stream_events(stream_key: str):
         raise HTTPException(status_code=404, detail="Stream not found")
 
     async def event_generator():
+        # Idle keep-alive: long LLM reasoning (chain-of-thought, sub-agent
+        # calls) can leave _sessions[stream_key] empty for tens of seconds.
+        # Without a periodic comment line, intermediaries (nginx / Vite proxy
+        # / browser EventSource) may close the connection on idle (G7). Pair
+        # this with the longer LM_STUDIO_TIMEOUT_READ in lm_studio.py (A3).
         sent = 0
+        loop = asyncio.get_event_loop()
+        last_yield = loop.time()
+        heartbeat_interval = float(os.environ.get("SSE_HEARTBEAT_SEC", "15"))
         while True:
             events = _sessions[stream_key]
+            emitted = False
             while sent < len(events):
                 event = events[sent]
                 data = json.dumps(event.model_dump(), ensure_ascii=False, default=str)
                 yield f"event: {event.type.value}\ndata: {data}\n\n"
                 sent += 1
+                emitted = True
                 if event.type in (EventType.FINAL, EventType.ERROR):
                     return
+            now = loop.time()
+            if emitted:
+                last_yield = now
+            elif now - last_yield >= heartbeat_interval:
+                # SSE comment lines are ignored by EventSource clients but
+                # keep the TCP connection alive across proxies.
+                yield ": heartbeat\n\n"
+                last_yield = now
             await asyncio.sleep(0.05)
 
     return StreamingResponse(

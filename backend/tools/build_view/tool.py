@@ -35,6 +35,11 @@ class BuildViewTool(Tool):
 
     def __init__(self, llm: LLMProvider | None = None) -> None:
         self._llm = llm
+        self._llm_options: dict = {}
+
+    def set_llm_options(self, **kwargs) -> None:
+        """Receive llm options from AgentLoop; forwarded to provider.complete."""
+        self._llm_options = {k: v for k, v in kwargs.items() if v is not None}
 
     @property
     def name(self) -> str:
@@ -114,7 +119,7 @@ class BuildViewTool(Tool):
             ]
 
             collected: list[str] = []
-            async for event in self._llm.complete(messages, tools=[]):
+            async for event in self._llm.complete(messages, tools=[], **self._llm_options):
                 if event.type == LLMEventType.TEXT_DELTA:
                     collected.append(event.delta)
                 elif event.type == LLMEventType.ERROR:

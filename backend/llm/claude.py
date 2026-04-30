@@ -21,6 +21,17 @@ from llm.base import (
 logger = logging.getLogger(__name__)
 
 
+_THINKING_SUPPORTED_PREFIXES: tuple[str, ...] = (
+    "claude-haiku-4-5",
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-7",
+    "claude-opus-4-5",
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+)
+
+
 class ClaudeProvider(LLMProvider):
     def __init__(
         self,
@@ -28,9 +39,16 @@ class ClaudeProvider(LLMProvider):
         api_key: str | None = None,
     ) -> None:
         self.model = model or os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+        # max_retries=0: avoid SDK auto-retry storms on rate limit (A6).
+        # We surface ERROR events immediately so the agent loop / user sees the
+        # actual response and decides whether to retry.
         self.client = anthropic.AsyncAnthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
+            max_retries=0,
         )
+
+    def _supports_thinking(self) -> bool:
+        return any(self.model.startswith(p) for p in _THINKING_SUPPORTED_PREFIXES)
 
     def _to_anthropic_tools(self, tools: list[ToolSchema]) -> list[dict]:
         return [
@@ -93,18 +111,40 @@ class ClaudeProvider(LLMProvider):
         self,
         messages: list[Message],
         tools: list[ToolSchema],
+        *,
+        max_tokens: int | None = None,
+        thinking_enabled: bool | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncGenerator[LLMEvent, None]:
         system_prompt, anthropic_messages = self._to_anthropic_messages(messages)
         anthropic_tools = self._to_anthropic_tools(tools)
 
+        default_max = int(os.environ.get("CLAUDE_MAX_TOKENS", "10000"))
+        final_max = max_tokens or default_max
+
+        stream_kwargs: dict = dict(
+            model=self.model,
+            max_tokens=final_max,
+            system=system_prompt,
+            messages=anthropic_messages,
+            tools=anthropic_tools if anthropic_tools else anthropic.NOT_GIVEN,
+        )
+        if thinking_enabled:
+            if self._supports_thinking():
+                default_budget = int(os.environ.get("CLAUDE_THINKING_BUDGET", "4096"))
+                budget = thinking_budget or default_budget
+                stream_kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget,
+                }
+            else:
+                logger.warning(
+                    "Model %s does not support extended thinking; option ignored",
+                    self.model,
+                )
+
         try:
-            async with self.client.messages.stream(
-                model=self.model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=anthropic_messages,
-                tools=anthropic_tools if anthropic_tools else anthropic.NOT_GIVEN,
-            ) as stream:
+            async with self.client.messages.stream(**stream_kwargs) as stream:
                 tool_id: str = ""
                 tool_name: str = ""
                 tool_input_buf: str = ""

@@ -83,5 +83,9 @@ class LLMProvider(ABC):
         self,
         messages: list[Message],
         tools: list[ToolSchema],
+        *,
+        max_tokens: int | None = None,
+        thinking_enabled: bool | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncGenerator[LLMEvent, None]:
         ...

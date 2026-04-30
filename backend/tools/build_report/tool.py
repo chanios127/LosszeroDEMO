@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -58,11 +59,71 @@ def _estimate_size(data_refs: list[dict]) -> tuple[int, int]:
     return total_rows, estimated_bytes
 
 
+def _truncate_data_results(
+    data_results: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """Cap per-cell text length and per-result row count before LLM ingestion.
+
+    Returns (truncated_results, sampling_meta). Sampling_meta is one entry per
+    data_results item, recording original/kept row counts and whether cells
+    were truncated. Long-text columns inflate the LLM prompt with no useful
+    signal — capping them keeps build_report inside the model's context budget
+    and prevents max_tokens-induced JSON cutoffs (D6).
+    """
+    max_chars = int(os.environ.get("BUILD_REPORT_MAX_CELL_CHARS", "200"))
+    max_rows = int(os.environ.get("BUILD_REPORT_MAX_ROWS", "30"))
+
+    truncated_results: list[dict] = []
+    sampling_meta: list[dict] = []
+
+    for idx, dr in enumerate(data_results):
+        rows = dr.get("rows", []) or []
+        columns = dr.get("columns", [])
+        original_n = len(rows)
+        kept_rows = rows[:max_rows]
+
+        cell_truncations = 0
+        new_rows: list[dict] = []
+        for row in kept_rows:
+            if not isinstance(row, dict):
+                new_rows.append(row)
+                continue
+            new_row: dict = {}
+            for k, v in row.items():
+                if isinstance(v, str) and len(v) > max_chars:
+                    new_row[k] = (
+                        v[:max_chars]
+                        + f"...(truncated, {len(v)} chars)"
+                    )
+                    cell_truncations += 1
+                else:
+                    new_row[k] = v
+            new_rows.append(new_row)
+
+        truncated_results.append({"rows": new_rows, "columns": columns})
+        sampling_meta.append({
+            "ref_id": idx,
+            "original_n": original_n,
+            "kept": len(new_rows),
+            "row_truncated": original_n > len(new_rows),
+            "cell_truncations": cell_truncations,
+            "max_cell_chars": max_chars,
+            "max_rows": max_rows,
+        })
+
+    return truncated_results, sampling_meta
+
+
 class BuildReportTool(Tool):
     """Tool that generates a ReportSchema from query results via internal LLM call."""
 
     def __init__(self, llm: LLMProvider | None = None) -> None:
         self._llm = llm
+        self._llm_options: dict = {}
+
+    def set_llm_options(self, **kwargs) -> None:
+        """Receive llm options from AgentLoop; forwarded to provider.complete."""
+        self._llm_options = {k: v for k, v in kwargs.items() if v is not None}
 
     @property
     def name(self) -> str:
@@ -113,8 +174,14 @@ class BuildReportTool(Tool):
         user_intent: str = input["user_intent"]
         data_results: list[dict] = input["data_results"]
 
-        # Build data_refs from input
-        data_refs = _build_data_refs(data_results)
+        # Cap cell length + row count BEFORE building data_refs so the LLM
+        # never sees raw long-text columns or oversized samples (A).
+        truncated_results, sampling_meta = _truncate_data_results(data_results)
+        if any(m["row_truncated"] or m["cell_truncations"] for m in sampling_meta):
+            logger.info("build_report: input truncated — %s", sampling_meta)
+
+        # Build data_refs from truncated input
+        data_refs = _build_data_refs(truncated_results)
         total_rows, est_bytes = _estimate_size(data_refs)
         logger.info(
             "build_report: %d data_results, %d total rows, ~%d bytes",
@@ -125,6 +192,7 @@ class BuildReportTool(Tool):
         user_content = json.dumps({
             "user_intent": user_intent,
             "data_refs": data_refs,
+            "sampling_meta": sampling_meta,
         }, ensure_ascii=False, default=str)
 
         messages: list[Message] = [
@@ -170,7 +238,7 @@ class BuildReportTool(Tool):
         assert self._llm is not None
 
         collected: list[str] = []
-        async for event in self._llm.complete(messages, tools=[]):
+        async for event in self._llm.complete(messages, tools=[], **self._llm_options):
             if event.type == LLMEventType.TEXT_DELTA:
                 collected.append(event.delta)
             elif event.type == LLMEventType.ERROR:

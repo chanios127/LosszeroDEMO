@@ -140,8 +140,16 @@ class LMStudioProvider(LLMProvider):
             base_url or os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
         ).rstrip("/")
         self.api_key = api_key or os.environ.get("LM_STUDIO_API_KEY", "lm-studio")
+        # Per-phase httpx timeout: long `read` covers reasoning models that
+        # spend tens of seconds inside <think> before emitting any token (A3).
+        # Connect/write/pool stay short to surface dead-server cases quickly.
         self._client = httpx.AsyncClient(
-            timeout=120.0,
+            timeout=httpx.Timeout(
+                connect=float(os.environ.get("LM_STUDIO_TIMEOUT_CONNECT", "10")),
+                read=float(os.environ.get("LM_STUDIO_TIMEOUT_READ", "600")),
+                write=30.0,
+                pool=30.0,
+            ),
             headers={"Authorization": f"Bearer {self.api_key}"},
         )
 
@@ -191,11 +199,23 @@ class LMStudioProvider(LLMProvider):
         self,
         messages: list[Message],
         tools: list[ToolSchema],
+        *,
+        max_tokens: int | None = None,
+        thinking_enabled: bool | None = None,
+        thinking_budget: int | None = None,
     ) -> AsyncGenerator[LLMEvent, None]:
+        if thinking_enabled:
+            logger.warning(
+                "LM Studio does not support extended thinking; option ignored"
+            )
+
         openai_messages = self._to_openai_messages(messages)
         payload: dict = {
             "messages": openai_messages,
             "stream": True,
+            "max_tokens": max_tokens or int(
+                os.environ.get("LM_STUDIO_MAX_TOKENS", "10000")
+            ),
         }
         if self.model:
             payload["model"] = self.model
@@ -228,7 +248,10 @@ class LMStudioProvider(LLMProvider):
                 if resp.status_code == 400 and tools:
                     # Model doesn't support tool calling — use tag-based fallback
                     await resp.aclose()
-                    async for event in self._complete_without_tools(messages):
+                    async for event in self._complete_without_tools(
+                        messages,
+                        max_tokens=max_tokens,
+                    ):
                         yield event
                     return
 
@@ -323,7 +346,10 @@ class LMStudioProvider(LLMProvider):
             )
 
     async def _complete_without_tools(
-        self, messages: list[Message]
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[LLMEvent, None]:
         """Fallback: send without tools, extract SQL from <execute_sql> tags."""
         openai_messages = self._to_openai_messages(messages)
@@ -333,6 +359,9 @@ class LMStudioProvider(LLMProvider):
         payload: dict = {
             "messages": openai_messages,
             "stream": False,
+            "max_tokens": max_tokens or int(
+                os.environ.get("LM_STUDIO_MAX_TOKENS", "10000")
+            ),
         }
         if self.model:
             payload["model"] = self.model
