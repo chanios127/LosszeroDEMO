@@ -154,7 +154,7 @@ class AgentLoop:
             len(tool_schemas),
         )
 
-        # Propagate llm options to sub-agent tools (build_report/build_view)
+        # Propagate llm options to sub-agent tools (build_schema/build_view)
         # so their internal LLM calls inherit max_tokens / thinking config.
         self._propagate_llm_options()
         llm_kwargs = self._llm_kwargs()
@@ -227,7 +227,7 @@ class AgentLoop:
 
             # Tools whose results should be treated as visualizable data
             _DATA_TOOLS = {"db_query", "sp_call"}
-            _SUBAGENT_TOOLS = {"build_report", "build_view"}
+            _SUBAGENT_TOOLS = {"build_schema", "build_view"}
 
             if tc.name in _SUBAGENT_TOOLS:
                 yield SubAgentStartEvent(name=tc.name)

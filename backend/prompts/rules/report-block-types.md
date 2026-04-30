@@ -5,7 +5,7 @@ version: 1
 applies_to:
   - sub_agent_prompt
 referenced_by:
-  - build_report
+  - build_schema
 ---
 
 # ReportSchema block types (strict enum)

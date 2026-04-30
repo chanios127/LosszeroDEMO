@@ -1,4 +1,4 @@
-"""BuildReportTool — generates a structured ReportSchema from query results via LLM."""
+"""BuildSchemaTool — generates a structured ReportSchema from query results via LLM."""
 from __future__ import annotations
 
 import json
@@ -63,7 +63,7 @@ def _truncate_data_results(
     Returns (truncated_results, sampling_meta). Sampling_meta is one entry per
     data_results item, recording original/kept row counts and whether cells
     were truncated. Long-text columns inflate the LLM prompt with no useful
-    signal — capping them keeps build_report inside the model's context budget
+    signal — capping them keeps build_schema inside the model's context budget
     and prevents max_tokens-induced JSON cutoffs (D6).
     """
     max_chars = int(os.environ.get("BUILD_REPORT_MAX_CELL_CHARS", "200"))
@@ -110,7 +110,7 @@ def _truncate_data_results(
     return truncated_results, sampling_meta
 
 
-class BuildReportTool(Tool):
+class BuildSchemaTool(Tool):
     """Tool that generates a ReportSchema from query results via internal LLM call."""
 
     def __init__(self, llm: LLMProvider | None = None) -> None:
@@ -123,7 +123,7 @@ class BuildReportTool(Tool):
 
     @property
     def name(self) -> str:
-        return "build_report"
+        return "build_schema"
 
     def schema(self) -> ToolSchema:
         return {
@@ -159,7 +159,7 @@ class BuildReportTool(Tool):
     async def execute(self, input: dict[str, Any]) -> dict:
         if self._llm is None:
             raise RuntimeError(
-                "BuildReportTool requires an LLMProvider. "
+                "BuildSchemaTool requires an LLMProvider. "
                 "Set it via constructor or wait for AgentLoop registration (9.4)."
             )
 
@@ -170,13 +170,13 @@ class BuildReportTool(Tool):
         # never sees raw long-text columns or oversized samples (A).
         truncated_results, sampling_meta = _truncate_data_results(data_results)
         if any(m["row_truncated"] or m["cell_truncations"] for m in sampling_meta):
-            logger.info("build_report: input truncated — %s", sampling_meta)
+            logger.info("build_schema: input truncated — %s", sampling_meta)
 
         # Build data_refs from truncated input
         data_refs = _build_data_refs(truncated_results)
         total_rows, est_bytes = _estimate_size(data_refs)
         logger.info(
-            "build_report: %d data_results, %d total rows, ~%d bytes",
+            "build_schema: %d data_results, %d total rows, ~%d bytes",
             len(data_results), total_rows, est_bytes,
         )
 
@@ -188,7 +188,7 @@ class BuildReportTool(Tool):
         }, ensure_ascii=False, default=str)
 
         messages: list[Message] = [
-            {"role": "system", "content": get_subagent_system("build_report")},
+            {"role": "system", "content": get_subagent_system("build_schema")},
             {"role": "user", "content": user_content},
         ]
 
@@ -200,7 +200,7 @@ class BuildReportTool(Tool):
             report = ReportSchema.model_validate(report_dict)
             return report.model_dump()
         except Exception as first_err:
-            logger.warning("build_report: first attempt validation failed: %s", first_err)
+            logger.warning("build_schema: first attempt validation failed: %s", first_err)
 
             # Attempt 2: retry with error context
             messages.append({
@@ -221,7 +221,7 @@ class BuildReportTool(Tool):
                 return report.model_dump()
             except Exception as second_err:
                 raise RuntimeError(
-                    f"build_report failed after 2 attempts. "
+                    f"build_schema failed after 2 attempts. "
                     f"Last error: {second_err}"
                 ) from second_err
 
@@ -234,7 +234,7 @@ class BuildReportTool(Tool):
             if event.type == LLMEventType.TEXT_DELTA:
                 collected.append(event.delta)
             elif event.type == LLMEventType.ERROR:
-                raise RuntimeError(f"LLM error during build_report: {event.message}")
+                raise RuntimeError(f"LLM error during build_schema: {event.message}")
 
         raw = "".join(collected).strip()
 
