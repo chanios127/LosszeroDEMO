@@ -1,8 +1,51 @@
 # LLM Harness — 미이행 로드맵
 
-> 최종 갱신: 2026-04-29 (Phase 8 종료 시점)
+> 최종 갱신: 2026-04-30 (Phase 11 + Phase 10 Step 3 종료 시점)
 
-현재 SPEC.md에 정의된 기능은 Phase 8까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+현재 SPEC.md에 정의된 기능은 Phase 11까지 완료. 이 문서는 **다음 세션에서 이어서 할 작업**을 정리합니다.
+
+## ✅ Phase 11에서 처리됨 (build_report 안정화 + Provider 인터페이스 가변화)
+
+**Backend (`7a45c17`)**:
+- `LLMProvider.complete` keyword-only 옵션 확장 — `max_tokens` / `thinking_enabled` / `thinking_budget`. claude는 모델 capability 검사 + extended thinking 자동 첨부, lm_studio는 thinking_enabled=True 시 warning + 무시
+- `claude max_retries=0` (A6) — SDK auto-retry storm 차단, agent loop가 backoff 결정
+- `lm_studio httpx.Timeout` per-phase 환경변수화 — `LM_STUDIO_TIMEOUT_CONNECT=10`, `LM_STUDIO_TIMEOUT_READ=600` (reasoning 모델의 첫 토큰 지연 대비)
+- AgentLoop sub-agent 옵션 propagate — 매 turn 시작 시 sub-agent tool 인스턴스에 `set_llm_options()` inject
+- build_report `_truncate_data_results` — `BUILD_REPORT_MAX_CELL_CHARS=200`, `BUILD_REPORT_MAX_ROWS=30` (C2)
+- `/api/defaults` GET endpoint — provider-aware default + thinking_supported flag
+- SSE `event_generator` 15s heartbeat — reverse proxy idle-close 방지 (G7), `LM_STUDIO_TIMEOUT_READ`과 짝
+
+**Frontend (`4a529d1`)**:
+- TweaksPanel "LLM" 섹션 — Slider primitive(framework) + Thinking Toggle + budget Slider, claude일 때만 thinking 컨트롤 활성화
+- `useTweaks` 확장 + localStorage backward-compat (v1 key, spread default 자동 채움)
+- `useServerDefaults` hook — startup에 `/api/defaults` fetch + tweaks hydration
+- AssistantBubble F7 null guard — 정밀 조건 (content empty + tools 없음 + report 없음 + think 없음 + inline viz 없음 + trace 없음 + streaming 아님 동시)
+- vite SSE-safe proxy — `timeout: 0, proxyTimeout: 0` (backend G7 heartbeat과 짝)
+
+## ✅ Phase 10에서 처리됨 (SKILL Architecture)
+
+**Step 1+2** (`8366824`/`ffababa`):
+- `prompts/rules/` 신설 5개 — `korean-sql.md` / `result-size.md` / `error-recovery.md` / `report-block-types.md` / `json-output.md`. cross-cutting rule frontmatter (`applies_to: [system_prompt]`)
+- db_query 한글 가드 fix (D7)
+- sub-agent system prompt 외부화 — `tools/build_report/system.md` / `tools/build_view/system.md`
+
+**Step 3** (`f9c1e39`):
+- `prompts/loader.py` — frontmatter parser (PyYAML 의존 회피, minimal regex) + `build_system_prompt()` (lru_cache, system_base + rules + tool addenda 합성) + `get_tool_description(name)` + `get_subagent_system(name)`
+- 5 도구에 SKILL.md 표준 적용 — frontmatter (name / type / version / applies_to / required_rules / sub_agent_system?) + Description / Rules / Guards / Errors / Examples 섹션
+- `Tool.description` ABC default — 자동으로 `loader.get_tool_description(self.name)` 호출, 도구별 override 불필요
+- system_base.md 다이어트 — rules/로 이전된 3 섹션 제거
+- description.md 5개 폐기
+
+**구조적 효과**: error-case Theme 1·2·3·5 root 해소 (프롬프트 파편화 / sub-agent 인라인 / 가드 분리 / 미래 SubAgent debt). 새 도구 추가 = 디렉토리 1개 + SKILL.md 1개 + tool.py로 끝.
+
+## ✅ Phase 9에서 처리됨 (Deep Agent Loop / Report Pipeline)
+
+- 3-stage sub-agent pipeline — AgentLoop ⊃ db_query·list_tables·sp_call (SubAgent1) + `build_report` (SubAgent2) + `build_view` (SubAgent3)
+- LLM 자율 라우팅 — Claude/LM Studio가 데이터 수집 후 build_report 호출 → ReportSchema (블록 구조) 생성 → build_view 호출 → ViewBundle 변환 → 인라인 ReportContainer 렌더
+- SSE `subagent_start` / `subagent_progress` / `subagent_complete` 이벤트 + UI multi-stage progress (`SubAgentProgress` 컴포넌트 + 한글 stage 라벨)
+- localStorage 메시지 메타데이터 영속화 — reportSchema + viewBundle을 메시지에 첨부, 페이지 reload 시 ReportContainer 재구성
+- `_session_domains` sticky (Fix 1) — 첫 turn에서 매칭된 도메인을 session에 박제, 후속 turn에서 키워드 누락 시 fallback
+- hotfix(`e2197d1`) — `<think>` 블록 strip (LM Studio reasoning 모델) + SubAgentProgress error UI
 
 ## ✅ Phase 8에서 처리됨 (joins 스키마 가독성 개선 + groupware 보강)
 
@@ -53,9 +96,27 @@
 
 ---
 
-## 🎯 다음 트랙 후보 (Phase 8+)
+## 🚦 P0 잔재 (별도 사이클 — Phase 12 또는 직전)
 
-우선순위는 사용자 논의로 결정 예정. 아래는 규모/가치 추정.
+Phase 11 라이브 회귀 결과와 무관하게 우선 처리해야 할 안정성 항목.
+
+- **B4 — AgentLoop circuit breaker**: 동일 에러 N회 연속 시 loop abort + LLM에 명시적 우회 메시지. claude `max_retries=0` (Phase 11)으로 SDK auto-retry는 차단됐지만 agent-level backoff는 별도.
+- **C1 — db_query 코드-level 1000행 cap**: LLM 프롬프트만 의존하는 row cap을 backend에서 강제. 메모리/네트워크 폭주 안전망.
+- **B1 / B2 / B3 — tool input validation + error wrapping**: build_report/build_view 빈 dict 방어, AgentLoop의 tool error를 `{type}: {msg}` 표준 포맷으로 wrap (LLM 회복 단서 강화).
+- **D2 — 영문 컬럼 환각 방어**: 도메인 schema 화이트리스트 검증으로 LLM이 존재하지 않는 컬럼명을 생성하는 것을 backend에서 reject (보강 C 후보).
+
+## 🛠 Phase 12 후보 (사전 plan 박제됨 — `plans/PHASE12-main-split.md`)
+
+- **`backend/main.py` 3-split** — 638줄 monolith → `app.py` (FastAPI 라우터) + `session.py` (SessionManager 객체화) + `orchestration.py` (AgentLoop 구동/스트리밍). 기능 추가 시 main.py 비대화 병목 해소.
+- **LLM helper 추출** — build_report / build_view tool.py에 산재한 fence/think strip + JSON parse + retry 로직 (~80줄 중복) → `backend/llm/helpers.py:call_llm_for_json()`. 다음 sub_agent (`comparison_agent` / `anomaly_detector` 등) 추가 직전에 우선 처리.
+
+## 🧱 Phase 10 Step 4 (잔여)
+
+- `backend/agents/` 디렉토리 + SubAgent 카탈로그 README. SKILL.md 표준 위에서 신규 sub_agent 추가 절차 박제.
+
+## 🎯 다음 트랙 후보 (사용자 논의로 결정)
+
+아래는 규모/가치 추정.
 
 ### A. 위젯 영속화 + 드래그 대시보드 빌더 (Track C 완성)
 **현재 상태**: UIBuilderPage 1~2단계 스캐폴딩만 존재. Step 3 (위젯 저장) 미구현.
@@ -153,6 +214,58 @@
 
 ---
 
+### F. HITL 게이트 재도입 (sub_agent 단위)
+**현재 상태**: build_report 출력 직후 검수 게이트 없음. Phase 9 sub-agent pipeline 완성 후 자연스러운 후보.
+
+**필요 작업**:
+- provider별 분기 (claude는 thinking 결과 + ReportSchema 미리보기, lm_studio는 ReportSchema만)
+- `agent/events.py`에 `ApprovalRequestEvent` (Phase 3에서 제거된 것 재도입, sub_agent 단위로 범위 축소)
+- `agent/loop.py` build_report 직후 approval_callback 대기 → 사용자 승인 후 build_view로 진행
+- 프론트 `ApprovalPrompt` 컴포넌트 + `useAgentStream` `pendingApproval` 재추가
+
+**예상 규모**: 중 (Phase 3 구현 이력 있음)
+
+---
+
+### G. SubAgent 카탈로그 확장
+**현재 상태**: build_report / build_view 두 개. SKILL.md 표준 위에서 신규 추가 비용 1 디렉토리.
+
+**후보**:
+- `comparison_agent` — 두 데이터셋 차이 분석 + 차이 블록 생성
+- `anomaly_detector` — 시계열 데이터 이상치 탐지 + KPI 카드
+- `summary_agent` — 멀티-도메인 결과 요약
+
+**선결**: Phase 12 LLM helper 추출 (build_report/build_view 중복 80줄). 그래야 신규 sub_agent가 fence/think strip + JSON parse + retry 로직을 재구현하지 않음.
+
+**예상 규모**: 소 per sub_agent (helper 추출 후)
+
+---
+
+### H. ReportSchema 점진 블록 확장
+**현재 상태**: `narrative` / `data_table` 블록 위주. 풍부한 시각화 부족.
+
+**후보 블록**:
+- `comparison` — 두 데이터셋 좌우 비교 (지난주 vs 이번주 등)
+- `kpi_grid` — 핵심 지표 카드 그리드
+- `table` (rich) — 정렬/필터/하이라이트 컬럼
+- `timeseries` — 시간축 라인 차트 + Brush
+
+각 블록은 `prompts/rules/report-block-types.md`에 LLM 가이드 추가 + `tools/build_view`의 ViewBundle 변환 매핑 + 프론트 `framework/components/report/` 컴포넌트 추가가 짝.
+
+**예상 규모**: 블록당 소~중
+
+---
+
+## 🧪 라이브 검증 대기 (사용자 환경)
+
+Phase 11 close 시점 미수행. 통과 결과 받으면 `error-case.md` 갱신 + Phase 12 진입 결정.
+
+- **Phase 11 통합 회귀** — TweaksPanel "LLM" 섹션 + max_tokens=12000 + thinking ON으로 본 회귀 시나리오 ("직원별 최근 업무 일지... 시각화") chain 끝까지. 통과 시 D6/D5/D1/A6/F7 → 🟢
+- **AS현안 4턴 통합 회귀** — Phase 9 close 시점부터 미실행
+- **F7 라이브 검증** — reasoning 모델 환경에서 빈 assistant bubble 미표시 확인
+
+---
+
 ## 🐛 알려진 이슈 / 개선 필요사항
 
 ### 1. ResultsBoard 컴포넌트 미사용
@@ -190,8 +303,10 @@
 ### 백엔드
 - `requirements.txt` 없음 (uv만 사용) — Docker 빌드 시 호환성 확인 필요
 - `__pycache__/` 일부 git history에 남아있음 (`.gitignore` 추가됨)
-- 세션 저장소가 모두 메모리 → 재시작 시 손실
-  - 옵션: SQLite / Redis / PostgreSQL로 영속화
+- 세션 저장소가 모두 메모리 (`_sessions` / `_conversations` / `_session_domains` / `_continue_*`) → 재시작 시 손실
+  - 옵션: SQLite / Redis / PostgreSQL로 영속화. SessionManager 객체화 (Phase 12 main.py 3-split) 후가 cheap.
+- 토큰 카운트 기반 히스토리 트리밍 — 현재 `MAX_CONVERSATION_HISTORY=20` 메시지 수 기준만 (긴 대화에서 컨텍스트 초과 가능)
+- Sonnet 다운그레이드 정식 적용 — Phase 9.6 파일럿 평가 기반 결정 보류 중
 
 ### 프론트엔드
 - `@tanstack/react-table` 설치됐지만 미사용 (Phase 4에서 제거)
