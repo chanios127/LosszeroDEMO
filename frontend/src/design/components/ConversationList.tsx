@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Conversation } from "../types/chat";
-import { IconPlus, IconSearch } from "./icons";
+import { IconPlus, IconSearch, IconSpinner } from "./icons";
 import { Button, fmtRel } from "./primitives";
 
 interface ConversationListProps {
@@ -11,11 +11,13 @@ interface ConversationListProps {
   onRename: (id: string, title: string) => void;
   onDownload: (id: string) => void;
   onNew: () => void;
+  streamingId?: string | null;
 }
 
 interface ItemProps {
   c: Conversation;
   active: boolean;
+  streaming: boolean;
   editing: boolean;
   editTitle: string;
   onSelect: () => void;
@@ -30,6 +32,7 @@ interface ItemProps {
 function ConversationItem({
   c,
   active,
+  streaming,
   editing,
   editTitle,
   onSelect,
@@ -89,16 +92,37 @@ function ConversationItem({
         <>
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
               fontSize: 13,
               color: active ? "var(--brand-500)" : "var(--text-strong)",
               fontWeight: active ? 500 : 400,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
               paddingRight: 20,
             }}
           >
-            {c.title}
+            {streaming && (
+              <span
+                aria-label="응답 생성 중"
+                style={{
+                  display: "inline-flex",
+                  flexShrink: 0,
+                  color: "var(--brand-500)",
+                }}
+              >
+                <IconSpinner width={12} height={12} />
+              </span>
+            )}
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                minWidth: 0,
+              }}
+            >
+              {c.title}
+            </span>
           </div>
           <div
             className="mono"
@@ -224,6 +248,7 @@ export default function ConversationList({
   onRename,
   onDownload,
   onNew,
+  streamingId,
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -265,6 +290,7 @@ export default function ConversationList({
       key={c.id}
       c={c}
       active={c.id === currentId}
+      streaming={c.id === streamingId}
       editing={editingId === c.id}
       editTitle={editTitle}
       onSelect={() => onSelect(c.id)}

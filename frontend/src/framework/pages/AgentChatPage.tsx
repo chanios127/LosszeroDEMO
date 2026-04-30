@@ -247,6 +247,7 @@ function AgentChat({
         <ConversationList
           conversations={domainConversations}
           currentId={currentConvId}
+          streamingId={isStreaming ? currentConvId : null}
           onSelect={handleSelect}
           onNew={handleNew}
           onDelete={handleDelete}
