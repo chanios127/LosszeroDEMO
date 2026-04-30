@@ -730,3 +730,91 @@ Phase 9·10·11 총 5사이클(9.1~9.6 + hotfix + Step 1+2 + Step 3 + Phase 11 b
 
 본 세션 종료 후 plan 파일 (`fluttering-launching-trinket.md`) 자체는 historical 자료로 보존. 새 사이클 진입 시 plan 파일 재작성.
 
+
+## 18. Cycle 1 — build_report → build_schema 리네임 클로즈 (2026-04-30)
+
+명칭 정확화 사이클. backend-infra 위임 → 머지 + frontend sync + docs sync.
+
+### 사이클 (commits + 머지 + sync)
+- `4dc8d9e` rename(tool) — agent/backend-infra: 14 파일 / +39 / -39. 디렉토리 git mv (build_report → build_schema), 클래스 BuildReportTool → BuildSchemaTool, SKILL.md frontmatter, main.py 인스턴스, agent/loop _SUBAGENT_TOOLS, prompts/system_base + rules referenced_by, build_view import 경로
+- `c5c2f07` merge(cycle-1) — supervisor가 main 위에서 --no-ff 머지
+- `218ff67` rename(frontend-sync) — supervisor가 직접: useAgentStream:273 (`event.tool === "build_schema"` runtime check), SubAgentProgress:18 (한글 라벨 dict 키), useAgentStream:249/271 + chat.ts:18 (주석)
+- `2c1c15d` docs(rename-sync) — SPEC/ARCHITECTURE/ROADMAP/HANDOFF/agent-prompts/backend-infra 일괄 치환 (5 파일). ROADMAP 상단 Cycle 1 close 박제. SPEC §11 BUILD_REPORT_MAX_* env var 미갱신 사실 인라인 주석.
+
+### 박제된 결정
+1. **자료구조 ReportSchema 명칭 그대로** — 도구 명칭만 바뀜
+2. **build_view 그대로** — chart axis assignment 역할 유지
+3. **환경변수명 BUILD_REPORT_MAX_*** 미갱신 — 별도 사이클 후보로 박제 (Phase 12 정리 묶음)
+4. **frontend mechanical sync는 supervisor 직접** — territory 위반 아니라 atomic rename 일부 (autonomous hotfix 권한 + agent F 회귀 점검에서 frontend follow-up 명시)
+5. **historical 박제(supervisorSnapshot / error-case / plans/* / debugHotfixerSnapshot / reports/error-analysis)는 미수정** — 시점별 사실로 보존
+
+### 검증 통과
+- backend: from main import app OK / load_all_tool_skills() == ['build_schema','build_view','db_query','list_tables','sp_call'] / BuildSchemaTool().name == "build_schema"
+- frontend: pnpm exec tsc --noEmit exit 0
+- 라이브 sub_agent 호출 회귀는 사용자 환경
+
+---
+
+## 19. UI/디자인 폴리시 사이클 (2026-04-30)
+
+7 hotfix 연속 처리. 사용자가 채팅/리포트 사용 중 발견한 가독성·UX 회귀.
+
+### Hotfix 7건 (자율 push 모드 — `feedback_autonomous_hotfix.md` 권한 발효)
+
+- `ece5965` polish(design): dark bg `--bg / --bg-elev-1/2/3` oklch lightness +0.04 (0.16→0.20 등) + `.prose code` brand-cyan → text-strong 보정 + `.prose pre` 신규 (12px / mono / overflow-x:auto / 1px border)
+- `87592f1` polish(framework+design): 대화 목록 자동 정렬 off — `useConversationStore.updateConversation` `[updated,...others].sort` → findIndex+replace, `ConversationList.filtered` `.sort` 제거. today/yesterday/earlier 그룹 분기는 그대로 (그룹 내 insertion order)
+- `cba0fc4` polish(design): db_query 결과 inline viz expand 영역에 `<details>` "Executed SQL" 토글 — `tool_start.input.sql` pairing (turn+tool key map)
+- `f496fe0` polish(design): `.prose h1~h6` 신규 (`--text-strong` + 0.8/0.35em margin + size 1.45→0.9em ladder + h5/h6은 의도적 dim)
+- `6c7e9be` hotfix(design): VizDebugInfo 제거 (callsite + 함수 + 주석 일괄). Executed SQL = `<details>` 토글 → 항상 visible 코드 블록 + 우측 상단 Copy 버튼 (`ExecutedSqlBlock` + `CopyGlyph` 인라인 svg, copied 1.4s)
+- `74ab847` hotfix(framework): `useQuickPrompts` hook 신설 — `{id,label,prompt}` shape + localStorage `losszero.quick-prompts.v1` + 도메인 전환 시 re-seed. groupware DEFAULTS 3종: 출근 간트 / 거래처 AS 분석 / 직원 업무일지. AgentChatPage 단순 교체.
+- `567c508` hotfix(design+framework): ConversationList streaming 표시 — `streamingId?` prop + IconSpinner(ring) → `3d71549`에서 `Dot(tone="brand")` 점등으로 대체 (ring 형태 거부, 깜빡이 후속)
+
+### 박제된 결정
+1. **자율 hotfix push 권한** (사용자 명시) — 메모리 `feedback_autonomous_hotfix.md`. 작은 수정(파일 1~3 / +50줄 미만 / 단일 관심사)은 plan-승인 핸드셰이크 생략, 즉시 commit+push+사후보고.
+2. **VizDebugInfo 데드코드** — Tweaks `data-debug-viz` toggle / `.viz-debug` CSS class는 dead-but-harmless 유지 (별도 정리 사이클 후보).
+3. **Streaming indicator는 currently selected 대화에만** — `useAgentStream` 페이지 단일 hook 구조 한계. 멀티 백그라운드 스트림은 SessionManager 리팩토링(Phase 12) 이후로 미룸.
+4. **CRUD UI는 별도 사이클** — `useQuickPrompts` 데이터 shape + 영속화는 ready, add/edit/delete 폼은 Cycle 2 디자인 산출물 도착 후 함께 검토.
+
+---
+
+## 20. Cycle 2 디자인 산출물 수령 (2026-04-30 19:14 KST)
+
+외부 Claude Design 도구가 design-export/ 패키지를 받아 **`https://api.anthropic.com/v1/design/h/f9oIN9jMgXfBMk8HHcEtBA`**(losszerodemo-2.tar.gz, 177KB)로 산출물 회수. supervisor가 `design-export/cycle2-output/`에 풀어 검수 완료.
+
+### 산출물 구성 (29 파일, 토큰 + 12 컴포넌트 + index.html canvas + interactive.html prototype + chat 로그)
+
+| 영역 | 파일 |
+|---|---|
+| 토큰 | `tokens.css` — 기존 OKLCH 미러 + **신규 4 severity 토큰** (`--severity-good / -neutral / -warn / -alert`). light theme 기본 (codebase는 dark 기본 + light 옵션 — 양쪽 동기화 필요) |
+| 신블록 5종 | `BubbleBreakdownBlock.jsx` (chart 좌 + 카드 우, 스크린샷1 정합) / `KpiGridBlock.jsx` (2/3/4-col + severity tinting) / `RankedListBlock.jsx` (rank badge + dot + name + primary/secondary + tags + highlight_top) / `GanttBlock.jsx` (단일 segment / 7~22시 ruler / team color, 스크린샷2 정합) / `RadarBlock.jsx` (SVG mock — 실 구현은 Recharts RadarChart) |
+| 기존 4 mock | `ExistingBlocks.jsx` — Markdown / Metric / Highlight / ChartPlaceholder (시그니처 잠금 정합) |
+| Container/dispatch | `ReportContainer.jsx` (mock) |
+| Composition | `Scenario1Report.jsx` (업무 현황 — KPI grid + Gantt + Bubble + Ranked × 2) / `Scenario2Report.jsx` (업체 분석 — Top 3 + radar + pattern detection) |
+| Archive UX | `ArchivePage.jsx` (1280×820 — 사이드바 + 검색 + 도메인/태그 필터 + 상세) + `InteractiveArchive.jsx` (working prototype, 검색·필터·삭제·HITL flow 모두 작동) |
+| HITL | `ReportProposalCard.jsx` (LLM 자율 호출 → 사용자 보관 결정) |
+| Spec docs | `SpecCard.jsx` (각 블록 옆 props interface + data_ref shape + LLM 가이드) |
+| 진입 | `index.html` (정적 canvas 9 섹션) + `interactive.html` (live prototype) |
+
+### 검수 결과 — HANDOFF-context.md §4 출발점 vs 산출물
+
+- ✅ bubble_breakdown props: title/data_ref/bubble{label/size/x/color}/cards{title,primary,secondary,tags,color_dot}/layout — 출발점 정합
+- ✅ kpi_grid props: title/columns(2|3|4)/metrics[{label/value/delta/trend/unit/severity}] — 신규 severity enum (`good|neutral|warning|alert`) 도입 → 신규 4 토큰과 짝
+- ✅ ranked_list props: title/data_ref/fields/limit/highlight_top — 출발점 정합
+- ✅ chart + viz_hint:"gantt" data_ref shape: `{label/color_group/start/end}` — 단일 segment, 멀티 segment는 후속
+- ✅ chart + viz_hint:"radar" data_ref shape: `{category/value/series?}` — multi-series via group_by
+- ⚠️ tokens.css가 light theme 기본 — 우리 codebase는 dark/light 양쪽이라 severity 4 토큰만 발췌 + dark/light 양쪽에 추가 필요
+- ⚠️ gantt/radar는 mock에서 SVG 직접 — 실 구현은 Recharts (BarChart horizontal / RadarChart) 권장 (기존 SwitchableViz 패턴 일치)
+- ⚠️ tabbed_section은 mock 시점에서 보류 (시나리오 1의 금일/금주/금월 토글 — 별도 보고서 분리 권장)
+
+### 본 사이클 후속 — Phase A/B/C 분할 plan 박제
+`plans/CYCLE2-design-integration.md` (다음 항목)에 Phase A/B/C 본문 박제. 이번 supervisor 세션은 산출물 검수 + plan 박제 + 시작 전 종료. 다음 supervisor 세션이 cold-start 후 Phase A 진입.
+
+### 다음 사이클 후속 큐 (§16 갱신)
+1. **Phase A** (supervisor 직접, design/) — types/report.ts 신블록 + types/events.ts viz_hint enum + index.css severity 토큰 + 5 신블록 .tsx + ReportContainer 디스패치 + ReportProposalCard. ~600줄, 8 파일.
+2. **Phase B** (BackEnd Infra 위임) — Pydantic 미러 + system.md 갱신 + rules 갱신 + build_view 매핑 + report_generate sub_agent + storage + /api/reports + report_proposed SSE. ~400줄, 8 파일 (그 중 신규 4).
+3. **Phase C** (Front/View 위임) — ReportArchivePage + useReportArchive + useReportProposal + App.tsx 라우팅. ~300줄, 4 파일 (그 중 신규 3).
+
+A → B 의존: B Pydantic이 A TypeScript interface를 1:1 미러. A → C 의존: C가 A 신블록 import. B → C 의존: C가 /api/reports + report_proposed 의존.
+
+### error-case 회귀 대기 (§16에서 이월)
+- D6/D5/D1/A6/F7 라이브 회귀 미수행. Phase A 시작 전 사용자 환경 통합 회귀 1회 권장 (Phase 11 백엔드/프론트 + 본 사이클 폴리시 + 리네임 모두 main 안착 시점).
