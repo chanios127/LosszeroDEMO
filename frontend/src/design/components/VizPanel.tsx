@@ -425,16 +425,23 @@ export function ChartPieViz({
 // Table
 // ---------------------------------------------------------------------------
 
-export function DataTable({ data }: { data: Record<string, unknown>[] }) {
+export function DataTable({
+  data,
+  fillHeight = false,
+}: {
+  data: Record<string, unknown>[];
+  /** Drill-down / modal contexts: no row cap, take available height. */
+  fillHeight?: boolean;
+}) {
   if (!data.length) return null;
   const cols = Object.keys(data[0]);
-  // Cap visible rows at ~10 — taller result sets scroll within the block.
+  // Inline default: cap visible rows at ~10 — taller result sets scroll within the block.
   // Row height ≈ 33px (8 padding × 2 + ~17 line-height) → 10 rows + header ≈ 363px.
   return (
     <div
       style={{
         overflow: "auto",
-        maxHeight: 363,
+        maxHeight: fillHeight ? undefined : 363,
         border: "1px solid var(--border-subtle)",
         borderRadius: "var(--r-md)",
       }}
@@ -954,7 +961,7 @@ function DrilldownModal({
               >
                 RAW DATA
               </div>
-              <DataTable data={data} />
+              <DataTable data={data} fillHeight />
             </div>
           )}
         </div>
