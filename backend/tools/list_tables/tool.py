@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
@@ -10,17 +9,11 @@ from domains.loader import MODULE_DOMAIN_MAP, parse_table_name
 from llm.base import ToolSchema
 from tools.base import Tool
 
-_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
-
 
 class ListTablesTool(Tool):
     @property
     def name(self) -> str:
         return "list_tables"
-
-    @property
-    def description(self) -> str:
-        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {

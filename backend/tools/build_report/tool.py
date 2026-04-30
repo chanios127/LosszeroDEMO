@@ -5,17 +5,15 @@ import json
 import logging
 import os
 import re
-from pathlib import Path
 from typing import Any
 
 from llm.base import LLMEvent, LLMEventType, LLMProvider, Message, ToolSchema
+from prompts.loader import get_subagent_system
 from tools.base import Tool
 
 from .schema import ReportSchema
 
 logger = logging.getLogger(__name__)
-
-_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
 
 # Threshold for switching from embed to ref mode
 _EMBED_MAX_ROWS = 1000
@@ -25,8 +23,6 @@ _EMBED_MAX_BYTES = 100_000  # ~100 KB
 # `<think>...</think>` blocks before the actual JSON payload despite system prompt
 # instructions. Strip defensively before json.loads.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-
-_REPORT_SYSTEM_PROMPT = (Path(__file__).parent / "system.md").read_text(encoding="utf-8").strip()
 
 
 def _build_data_refs(data_results: list[dict]) -> list[dict]:
@@ -129,10 +125,6 @@ class BuildReportTool(Tool):
     def name(self) -> str:
         return "build_report"
 
-    @property
-    def description(self) -> str:
-        return _DESCRIPTION
-
     def schema(self) -> ToolSchema:
         return {
             "name": self.name,
@@ -196,7 +188,7 @@ class BuildReportTool(Tool):
         }, ensure_ascii=False, default=str)
 
         messages: list[Message] = [
-            {"role": "system", "content": _REPORT_SYSTEM_PROMPT},
+            {"role": "system", "content": get_subagent_system("build_report")},
             {"role": "user", "content": user_content},
         ]
 

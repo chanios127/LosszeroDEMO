@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import Path
 from typing import Any
 
 from llm.base import LLMEventType, LLMProvider, Message, ToolSchema
+from prompts.loader import get_subagent_system
 from tools.base import Tool
 from tools.build_report.schema import ChartBlock, ReportSchema
 
@@ -15,12 +15,8 @@ from .schema import BLOCK_COMPONENT_MAP, ViewBlockSpec, ViewBundle
 
 logger = logging.getLogger(__name__)
 
-_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
-
 # Strip qwen-style <think>...</think> reasoning blocks before json.loads.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-
-_AXIS_SYSTEM_PROMPT = (Path(__file__).parent / "system.md").read_text(encoding="utf-8").strip()
 
 
 def _fallback_axis(viz_hint: str, col_names: list[str]) -> dict[str, Any]:
@@ -44,10 +40,6 @@ class BuildViewTool(Tool):
     @property
     def name(self) -> str:
         return "build_view"
-
-    @property
-    def description(self) -> str:
-        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {
@@ -111,7 +103,7 @@ class BuildViewTool(Tool):
 
         try:
             messages: list[Message] = [
-                {"role": "system", "content": _AXIS_SYSTEM_PROMPT},
+                {"role": "system", "content": get_subagent_system("build_view")},
                 {"role": "user", "content": json.dumps(
                     {"viz_hint": viz_hint, "columns": col_names},
                     ensure_ascii=False,

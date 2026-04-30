@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
@@ -13,17 +12,11 @@ from tools.base import Tool
 
 logger = logging.getLogger(__name__)
 
-_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
-
 
 class SPCallTool(Tool):
     @property
     def name(self) -> str:
         return "sp_call"
-
-    @property
-    def description(self) -> str:
-        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {
