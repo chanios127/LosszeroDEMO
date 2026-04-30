@@ -181,6 +181,24 @@ function AssistantBubble({ msg }: { msg: ChatMessage }) {
     (s) => s.content.trim().length > 0,
   );
 
+  // F7: hide the entire bubble when there is genuinely nothing to show.
+  // Reasoning models emit empty text before tool calls, producing a ghost
+  // bubble with no content after streaming ends.
+  const hasTraceEvents = (msg.traceEvents?.length ?? 0) > 0;
+  const hasInlineData = !!(msg.data && msg.data.length > 0);
+  const hasReportContent = !!(msg.reportSchema || msg.viewBundle);
+  const hasThinkContent = thinkSegments.length > 0;
+  if (
+    !hasVisibleText &&
+    !msg.isStreaming &&
+    !hasThinkContent &&
+    !hasTraceEvents &&
+    !hasInlineData &&
+    !hasReportContent
+  ) {
+    return null;
+  }
+
   return (
     <div
       className="fade-in"

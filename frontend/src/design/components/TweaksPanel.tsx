@@ -8,11 +8,14 @@ import type {
   Tweaks,
 } from "../../framework/hooks/useTweaks";
 import { PALETTES } from "../../framework/hooks/useTweaks";
+import { Slider } from "./primitives";
+import type { ServerDefaults } from "../../framework/hooks/useServerDefaults";
 
 interface TweaksPanelProps {
   tweaks: Tweaks;
   setTweak: <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
   onClose: () => void;
+  serverDefaults?: ServerDefaults | null;
 }
 
 const ROW_STYLE: CSSProperties = {
@@ -145,6 +148,7 @@ export default function TweaksPanel({
   tweaks,
   setTweak,
   onClose,
+  serverDefaults,
 }: TweaksPanelProps) {
   return (
     <div
@@ -274,6 +278,60 @@ export default function TweaksPanel({
               active={tweaks.chartPalette === "mono"}
               onSelect={() => setTweak("chartPalette", "mono")}
             />
+          </div>
+        </Section>
+
+        <Section label="LLM">
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <Slider
+              label="최대 출력 토큰"
+              min={1000}
+              max={32000}
+              step={500}
+              value={tweaks.maxTokens}
+              onChange={(v) => setTweak("maxTokens", v)}
+            />
+            {serverDefaults?.thinking_supported && (
+              <>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    background: "var(--bg-elev-2)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={tweaks.thinkingEnabled}
+                    onChange={(e) => setTweak("thinkingEnabled", e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-strong)" }}>
+                      확장 추론 (Thinking)
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                      Claude 전용 — 복잡한 분석에 심층 추론 적용
+                    </div>
+                  </div>
+                </label>
+                {tweaks.thinkingEnabled && (
+                  <Slider
+                    label="추론 budget"
+                    min={1024}
+                    max={16000}
+                    step={256}
+                    value={tweaks.thinkingBudget}
+                    onChange={(v) => setTweak("thinkingBudget", v)}
+                  />
+                )}
+              </>
+            )}
           </div>
         </Section>
 

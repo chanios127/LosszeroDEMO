@@ -7,11 +7,13 @@ import AgentChatPage from "./pages/AgentChatPage";
 import UIBuilderPage from "./pages/UIBuilderPage";
 import ReportDemoPage from "./pages/ReportDemoPage";
 import { useTweaks } from "./hooks/useTweaks";
+import { useServerDefaults } from "./hooks/useServerDefaults";
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("dashboard");
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
   const { tweaks, setTweak, showTweaks, setShowTweaks } = useTweaks();
+  const serverDefaults = useServerDefaults();
 
   const handleAskFromDashboard = (query: string) => {
     setPendingQuery(query);
@@ -53,6 +55,7 @@ export default function App() {
           tweaks={tweaks}
           setTweak={setTweak}
           onClose={() => setShowTweaks(false)}
+          serverDefaults={serverDefaults}
         />
       )}
     </>

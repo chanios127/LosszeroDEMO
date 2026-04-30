@@ -4,6 +4,7 @@ import type { ChatMessage } from "../../design/types/chat";
 import type { ResultEntry } from "../../design/types/result";
 import type { ReportSchema } from "../../design/types/report";
 import type { ViewBundle } from "../../design/types/view";
+import { readStoredLlmOptions } from "./useTweaks";
 
 // ---------------------------------------------------------------------------
 // State & Actions
@@ -338,6 +339,8 @@ export function useAgentStream() {
     const msgId = crypto.randomUUID();
     dispatch({ type: "SEND_QUERY", query, id: msgId });
 
+    const llmOpts = readStoredLlmOptions();
+
     try {
       const res = await fetch(`${API_BASE}/query`, {
         method: "POST",
@@ -345,6 +348,9 @@ export function useAgentStream() {
         body: JSON.stringify({
           query,
           session_id: sessionRef.current,
+          max_tokens: llmOpts.maxTokens,
+          thinking_enabled: llmOpts.thinkingEnabled,
+          thinking_budget: llmOpts.thinkingEnabled ? llmOpts.thinkingBudget : undefined,
         }),
       });
 
