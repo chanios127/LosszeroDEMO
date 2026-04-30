@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAgentStream } from "../hooks/useAgentStream";
 import { useConversationStore } from "../hooks/useConversationStore";
+import { useQuickPrompts } from "../hooks/useQuickPrompts";
 import type { ChatMessage } from "../../design/types/chat";
 import type { ViewBundle } from "../../design/types/view";
 import ChatInput from "../../design/components/ChatInput";
@@ -132,7 +133,10 @@ function AgentChat({
   } = useConversationStore();
 
   const style = DOMAIN_STYLE[domain.domain] ?? DEFAULT_STYLE;
-  const quickPrompts = domain.keywords.slice(0, 3).map((kw) => `${kw} 현황 조회`);
+  const { prompts: quickPrompts } = useQuickPrompts(
+    domain.domain,
+    domain.keywords,
+  );
 
   const [currentConvId, setCurrentConvId] = useState<string>(() => crypto.randomUUID());
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -300,12 +304,13 @@ function AgentChat({
                 <div className="flex flex-col gap-2 w-full max-w-sm">
                   {quickPrompts.map((q) => (
                     <button
-                      key={q}
-                      onClick={() => send(q)}
+                      key={q.id}
+                      onClick={() => send(q.prompt)}
+                      title={q.prompt}
                       className="rounded-lg border border-border px-4 py-2.5 text-sm text-left
                         text-text-muted hover:border-brand-500 hover:text-brand-500 hover:bg-[color:color-mix(in_oklch,var(--brand-500)_5%,transparent)]"
                     >
-                      {q}
+                      {q.label}
                     </button>
                   ))}
                 </div>
