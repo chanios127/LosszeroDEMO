@@ -341,6 +341,7 @@ FROM dbo.TGW_TaskDailyLog td
 - LM Studio 모델이 build_schema 호출 시 `{data_results: [{columns, rows, user_intent: "..."}]}` 형태로 nest. 정상은 `{user_intent: str, data_results: [{columns, rows}]}`.
 - `backend/tools/build_schema/tool.py:166 user_intent = input["user_intent"]` → KeyError raise → tool result error
 - retry 시 LM Studio가 raw string fallback `<channel|><|tool_call>call:build_schema{...}` 출력 (Harmony 마커 정규화 실패, A1 변종) — tool_calls 미파싱 → chain 진행 불가
+- **2026-04-30 시나리오 2 회귀에서 `report_generate`에서도 동일 결함 재현** (`tool.py:71 user_intent = input["user_intent"]` KeyError). LLM이 `{report_schema: {...}}`만 보내고 user_intent 누락. 결함 범위 = `{user_intent, ...}` 인풋 패턴을 가진 모든 sub-agent 도구 (build_schema + report_generate). build_view는 `{report_schema}` 단일 필드라 자연 회피.
 **본질**: instruct 모델의 도구 호출 능력 한계. Tool input contract 자체는 명확히 정의됨 (top-level user_intent + data_results array). SKILL.md/system.md에 더 명시화하거나 tool.py에 defensive fallback 추가하는 건 모델 한계 과적합 → **본 케이스는 코드 수정 보류** (memory `feedback_no_llm_overfit.md` 적용)
 **위치**:
 - `backend/tools/build_schema/tool.py:166` — input contract 위반 시 KeyError raise (정상 동작)
