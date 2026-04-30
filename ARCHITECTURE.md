@@ -33,7 +33,7 @@ LosszeroDEMO/
 │   │   ├── db_query/
 │   │   ├── list_tables/
 │   │   ├── sp_call/
-│   │   ├── build_report/                # sub_agent: data_results → ReportSchema
+│   │   ├── build_schema/                # sub_agent: data_results → ReportSchema
 │   │   └── build_view/                  # sub_agent: ReportSchema → ViewBundle
 │   ├── db/
 │   │   └── connection.py                # pyodbc 풀 + run_in_executor
@@ -143,7 +143,7 @@ LosszeroDEMO/
 | `tool_result` | 도구 실행 완료 | tool, output, rows, error, turn |
 | `llm_chunk` | LLM 텍스트 스트리밍 | delta |
 | `continue_prompt` | 10턴 도달 | turn, message |
-| `subagent_start` | sub_agent 진입 (build_report / build_view) | name |
+| `subagent_start` | sub_agent 진입 (build_schema / build_view) | name |
 | `subagent_progress` | sub_agent 단계 진행 | name, stage |
 | `subagent_complete` | sub_agent 종료 | name, output_summary |
 | `final` | 에이전트 완료 | answer, viz_hint, data |
@@ -164,7 +164,7 @@ reasoning 모델의 긴 silence 동안 reverse proxy idle-close를 방지하기 
 | `list_tables` | tool | 테이블명 조회 + 도메인 자동 분류 |
 | `db_query` | tool | SELECT 쿼리 실행 (DML/DDL regex 차단) |
 | `sp_call` | tool | 화이트리스트 SP 실행 (도메인 JSON에서 추출) |
-| `build_report` | sub_agent | 데이터 결과 → ReportSchema (블록 구조) |
+| `build_schema` | sub_agent | 데이터 결과 → ReportSchema (블록 구조) |
 | `build_view` | sub_agent | ReportSchema → ViewBundle (인라인 렌더링용) |
 
 ---

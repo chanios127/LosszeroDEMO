@@ -71,7 +71,7 @@
 - agent-prompts/README에 동시 세션 워크트리 충돌 가드
 
 **Phase 9 (Deep Agent Loop / Report Pipeline, 2026-04-29)**:
-- 3-stage sub-agent pipeline: AgentLoop ⊃ db_query·list_tables·sp_call (SubAgent1) + build_report (SubAgent2) + build_view (SubAgent3)
+- 3-stage sub-agent pipeline: AgentLoop ⊃ db_query·list_tables·sp_call (SubAgent1) + build_schema (SubAgent2) + build_view (SubAgent3)
 - LLM 자율 라우팅, ReportSchema → ViewBundle → 인라인 ReportContainer chain
 - SSE subagent_* 이벤트 + UI multi-stage progress (`SubAgentProgress`)
 - localStorage persistence (메시지 메타데이터에 reportSchema + viewBundle)
@@ -79,12 +79,12 @@
 - hotfix(`e2197d1`): `<think>` 블록 strip + SubAgentProgress error UI + 한글 stage 라벨
 
 **Phase 10 SKILL Architecture (2026-04-30)**:
-- **Step 1+2 (`8366824`/`ffababa`)**: `prompts/rules/` 신설 5개 (korean-sql / result-size / error-recovery / report-block-types / json-output) + db_query 한글 가드 fix (D7) + sub-agent system prompt 외부화 (`build_report/system.md` / `build_view/system.md`)
+- **Step 1+2 (`8366824`/`ffababa`)**: `prompts/rules/` 신설 5개 (korean-sql / result-size / error-recovery / report-block-types / json-output) + db_query 한글 가드 fix (D7) + sub-agent system prompt 외부화 (`build_schema/system.md` / `build_view/system.md`)
 - **Step 3 (`f9c1e39`)**: `prompts/loader.py` (frontmatter parser + applies_to 라우팅) + 5개 도구에 SKILL.md 표준 + `Tool.description` ABC default + system_base.md 다이어트
 - error-case 구조적 테마 1·2·3·5 root 해소 (Theme 4는 framework 마련, individual case는 별도)
 
-**Phase 11 build_report 안정화 + Provider 가변화 (2026-04-30)**:
-- **Backend (`7a45c17`)**: `LLMProvider.complete` keyword-only 옵션 확장 (max_tokens / thinking_*) + claude max_retries=0 + lm_studio httpx.Timeout per-phase 환경변수화 + AgentLoop sub-agent 옵션 propagate + build_report `_truncate_data_results` + `/api/defaults` endpoint + SSE event_generator heartbeat 15s
+**Phase 11 build_schema 안정화 + Provider 가변화 (2026-04-30)**:
+- **Backend (`7a45c17`)**: `LLMProvider.complete` keyword-only 옵션 확장 (max_tokens / thinking_*) + claude max_retries=0 + lm_studio httpx.Timeout per-phase 환경변수화 + AgentLoop sub-agent 옵션 propagate + build_schema `_truncate_data_results` + `/api/defaults` endpoint + SSE event_generator heartbeat 15s
 - **Frontend (`4a529d1`)**: TweaksPanel "LLM" 섹션 (Slider + Thinking Toggle + budget) + Slider primitive + useServerDefaults hook + useTweaks 확장 + AssistantBubble F7 null guard + vite SSE-safe proxy
 
 **부수 인프라 (이 사이클들 사이)**:
@@ -101,11 +101,11 @@
 
 **Phase 12 후보** (사전 plan 박제됨 — `plans/PHASE12-main-split.md`):
 - main.py 638줄 3-split (`app.py` + `session.py` + `orchestration.py`)
-- LLM helper 추출 (build_report/build_view 중복 ~80줄 → `llm/helpers.py:call_llm_for_json`)
+- LLM helper 추출 (build_schema/build_view 중복 ~80줄 → `llm/helpers.py:call_llm_for_json`)
 
 **중기 (Phase 12 후)**:
 - Phase 10 Step 4 — `backend/agents/` 디렉토리 + SubAgent 카탈로그 README
-- HITL 게이트 (provider별 분기, build_report 출력 직후 검수)
+- HITL 게이트 (provider별 분기, build_schema 출력 직후 검수)
 - ReportSchema 점진 블록 (`table` / `comparison` / `kpi_grid`)
 - View 카탈로그 확장 (`TimeSeriesPanel` / `HeatmapCalendar`)
 - SubAgent 카탈로그화 (`comparison_agent` / `anomaly_detector`)

@@ -49,7 +49,7 @@ LosszeroDEMO/
 │   │   ├── db_query/                    # 패키지 (tool.py + SKILL.md)
 │   │   ├── list_tables/                 # 패키지 (tool.py + SKILL.md)
 │   │   ├── sp_call/                     # 패키지 (tool.py + SKILL.md)
-│   │   ├── build_report/                # sub-agent (tool.py + SKILL.md + system.md + schema.py)
+│   │   ├── build_schema/                # sub-agent (tool.py + SKILL.md + system.md + schema.py)
 │   │   └── build_view/                  # sub-agent (tool.py + SKILL.md + system.md + schema.py)
 │   ├── db/
 │   │   └── connection.py                # PyodbcPool + asyncio wrapper
@@ -144,7 +144,7 @@ tools/db_query/                        # 일반 tool
 ├── tool.py                            # 실제 클래스 구현
 └── SKILL.md                           # frontmatter + Description / Rules / Guards / Errors
 
-tools/build_report/                    # sub_agent
+tools/build_schema/                    # sub_agent
 ├── __init__.py
 ├── tool.py                            # AgentLoop에서 호출하는 entry, 내부에서 LLM 재호출
 ├── SKILL.md                           # frontmatter (sub_agent_system: ./system.md 포함)
@@ -281,7 +281,7 @@ Step 3: 위젯 저장 (미구현 — ROADMAP §A 후보)
 | `tool_result` | 도구 실행 완료 | `{tool, output, rows, error, turn}` |
 | `llm_chunk` | LLM 텍스트 델타 | `{delta}` |
 | `continue_prompt` | 10턴 도달 | `{turn, message}` |
-| `subagent_start` | sub-agent 시작 (build_report / build_view) | `{name}` |
+| `subagent_start` | sub-agent 시작 (build_schema / build_view) | `{name}` |
 | `subagent_progress` | sub-agent 진행 stage | `{name, stage}` |
 | `subagent_complete` | sub-agent 종료 | `{name, output_summary}` |
 | `final` | 에이전트 완료 | `{answer, viz_hint, data}` |
@@ -372,12 +372,12 @@ domains/groupware/
 | `list_tables` | tool | DB 테이블명 조회 + 도메인 자동 분류 | `{pattern?}` |
 | `db_query` | tool | SELECT 쿼리 (DML/DDL regex 차단) | `{sql, params?}` |
 | `sp_call` | tool | 화이트리스트 SP 실행 | `{sp_name, params?}` |
-| `build_report` | sub_agent | 데이터 결과 → ReportSchema (블록 구조) 변환 | `{data_results, user_intent}` |
+| `build_schema` | sub_agent | 데이터 결과 → ReportSchema (블록 구조) 변환 | `{data_results, user_intent}` |
 | `build_view` | sub_agent | ReportSchema → ViewBundle (인라인 렌더링용) 변환 | `{report_schema}` |
 
 **last_data 로직**: `_DATA_TOOLS = {"db_query", "sp_call"}` — 이 도구 결과만 `FinalEvent.data`로 저장 (메타데이터/sub-agent 도구 제외).
 
-**sub-agent (Phase 9)**: `build_report` / `build_view`는 도구 형태로 호출되지만 내부에서 LLM을 재호출하여 구조화된 산출물(ReportSchema → ViewBundle)을 생성. 매 turn 시작 시 AgentLoop가 `set_llm_options()`로 sub-agent tool 인스턴스에 max_tokens / thinking_* 옵션 inject. 진행 stage는 `subagent_start/progress/complete` SSE 이벤트로 노출. 입력은 `_truncate_data_results`(default `BUILD_REPORT_MAX_CELL_CHARS=200`, `BUILD_REPORT_MAX_ROWS=30`)로 cap (Phase 11 C2).
+**sub-agent (Phase 9)**: `build_schema` / `build_view`는 도구 형태로 호출되지만 내부에서 LLM을 재호출하여 구조화된 산출물(ReportSchema → ViewBundle)을 생성. 매 turn 시작 시 AgentLoop가 `set_llm_options()`로 sub-agent tool 인스턴스에 max_tokens / thinking_* 옵션 inject. 진행 stage는 `subagent_start/progress/complete` SSE 이벤트로 노출. 입력은 `_truncate_data_results`(default `BUILD_REPORT_MAX_CELL_CHARS=200`, `BUILD_REPORT_MAX_ROWS=30`)로 cap (Phase 11 C2).
 
 **SKILL.md 표준** (Phase 10 Step 3): 각 도구의 description / rules / guards / errors는 `tools/<name>/SKILL.md`에 단일 보유. `Tool.description` ABC default가 `loader.get_tool_description(self.name)` 자동 호출 → 도구별 override 불필요. sub_agent의 내부 LLM system 메시지는 `tools/<name>/system.md`에 외부화 + `loader.get_subagent_system(name)`으로 read.
 
@@ -493,8 +493,8 @@ LM_STUDIO_MAX_TOKENS=10000
 LM_STUDIO_TIMEOUT_CONNECT=10      # httpx connect timeout (s)
 LM_STUDIO_TIMEOUT_READ=600        # reasoning 모델의 첫 토큰 지연 대비 (s)
 
-# build_report 입력 cap (Phase 11 C2)
-BUILD_REPORT_MAX_CELL_CHARS=200
+# build_schema 입력 cap (Phase 11 C2)
+BUILD_REPORT_MAX_CELL_CHARS=200      # 도구 리네임(build_report → build_schema) 후 미갱신 — 별도 사이클 후보
 BUILD_REPORT_MAX_ROWS=30
 
 # SSE keep-alive (Phase 11 G7) — reverse proxy idle-close 방지, LM_STUDIO_TIMEOUT_READ과 짝
@@ -563,8 +563,8 @@ Claude Code 세션 자동 로드. **런타임 백엔드와 분리**.
 | 6.5 | 협업 인프라 정착: `HANDOFF.md`, `agent-prompts/` (5역할 + README), per-agent feature 브랜치 전략(`agent/<role>`), Debug A+C 가드레일(옵션 1 블랙리스트 11종 트리거 + 안전장치 2개), Claude Design 재주입 패키지 규격(`design-export/`) |
 | 7 | 도메인 폴더 형식(`<name>/{meta,tables,joins,stored_procedures}.json`) + joins 1급화(top-level + composite/operators), `domains/parser.py:build_select()` (joins → SELECT SQL 자동 재조립) |
 | 8 | joins 스키마 압축 (4 키 → 2 키 `tables`/`columns`, dbo prefix 자동 prepend), groupware 22 joins, parser/loader 신 스키마 마이그레이션 |
-| 9 | Deep Agent Loop / Report Pipeline — 3-stage sub-agent (`build_report` + `build_view`) + ReportSchema → ViewBundle → 인라인 ReportContainer, SSE `subagent_*` 이벤트, `_session_domains` sticky (Fix 1), 메시지 메타데이터 localStorage 영속화 |
+| 9 | Deep Agent Loop / Report Pipeline — 3-stage sub-agent (`build_schema` + `build_view`) + ReportSchema → ViewBundle → 인라인 ReportContainer, SSE `subagent_*` 이벤트, `_session_domains` sticky (Fix 1), 메시지 메타데이터 localStorage 영속화 |
 | 10 | SKILL.md 표준 (Step 1+2: `prompts/rules/` + sub-agent `system.md` 외부화 / Step 3: `prompts/loader.py` + 5 도구 SKILL.md + `Tool.description` ABC default + system_base.md 다이어트). 새 도구 추가 = 디렉토리 1개로 끝. |
-| 11 | build_report 안정화 + Provider 인터페이스 가변화 — `LLMProvider.complete` keyword-only 옵션 (max_tokens / thinking_*), `claude max_retries=0`, `lm_studio httpx.Timeout` per-phase, `_truncate_data_results`, `/api/defaults`, SSE 15s heartbeat, TweaksPanel "LLM" 섹션 + Slider primitive, F7 빈 assistant bubble null guard, vite SSE-safe proxy |
+| 11 | build_schema 안정화 + Provider 인터페이스 가변화 — `LLMProvider.complete` keyword-only 옵션 (max_tokens / thinking_*), `claude max_retries=0`, `lm_studio httpx.Timeout` per-phase, `_truncate_data_results`, `/api/defaults`, SSE 15s heartbeat, TweaksPanel "LLM" 섹션 + Slider primitive, F7 빈 assistant bubble null guard, vite SSE-safe proxy |
 
 상세한 미이행 항목은 [ROADMAP.md](./ROADMAP.md) 참조.

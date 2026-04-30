@@ -13,7 +13,7 @@
 - `backend/main.py` (FastAPI 라우터, 세션 저장소, SSE 엔드포인트)
 - `backend/agent/` (`loop.py` AgentLoop, `events.py` SSE 이벤트 타입)
 - `backend/llm/` (`base.py` 추상, `claude.py`, `lm_studio.py`, `__init__.py` 팩토리)
-- `backend/tools/` (`base.py` Tool ABC + 5 디렉토리: `db_query/`, `list_tables/`, `sp_call/`, `build_report/`, `build_view/`. 각 디렉토리의 `tool.py` / `SKILL.md` / sub_agent의 `system.md` + `schema.py`)
+- `backend/tools/` (`base.py` Tool ABC + 5 디렉토리: `db_query/`, `list_tables/`, `sp_call/`, `build_schema/`, `build_view/`. 각 디렉토리의 `tool.py` / `SKILL.md` / sub_agent의 `system.md` + `schema.py`)
 - `backend/db/connection.py` (PyodbcPool, run_in_executor 래핑)
 - `backend/prompts/` (시스템 프롬프트 — `system_base.md` core, `loader.py` 합성기, `rules/<name>.md` cross-cutting rule)
 
@@ -135,7 +135,7 @@ cd ../LosszeroDEMO-backend-infra
 - **시스템 프롬프트 / LLM instruction 상수** (`backend/prompts/system_base.md`, `backend/prompts/rules/*.md`, `backend/tools/*/SKILL.md`, `backend/tools/*/system.md` (sub_agent), `backend/llm/lm_studio.py`의 `_FALLBACK_TAG_INSTRUCTION` 같은 provider 내부 LLM instruction)
 - **SSE 이벤트 스키마** (`backend/agent/events.py` — `subagent_*` 포함 9종) — 변경 시 `frontend/src/design/types/events.ts` 동시 수정 필수, Front/View 세션 협조 필요
 - **공용 인터페이스 시그니처**: `LLMProvider.complete` (max_tokens / thinking_* keyword-only 옵션 포함), `Tool.execute`, `Tool.input_schema`, sub_agent의 `set_llm_options()`, AgentLoop public 메서드
-- **JSON 모델 잠금**: `ReportSchema` / `ViewBundle` (`tools/build_report/schema.py` / `tools/build_view/schema.py`) — Phase 9 sub_agent 입출력 계약, 프론트 ReportContainer와 짝
+- **JSON 모델 잠금**: `ReportSchema` / `ViewBundle` (`tools/build_schema/schema.py` / `tools/build_view/schema.py`) — Phase 9 sub_agent 입출력 계약, 프론트 ReportContainer와 짝
 - **읽기 전용 가드** (`backend/tools/db_query/`의 DML/DDL 차단 regex) — 우회 금지
 - **DB 풀 / 동시성** (`backend/db/connection.py`)
 - **API 라우터 경로/메소드 변경** — 프론트 hooks 동기화 필수
