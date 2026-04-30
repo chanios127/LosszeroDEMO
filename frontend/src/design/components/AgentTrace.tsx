@@ -131,6 +131,95 @@ export function ToolStep({ event }: { event: AgentEvent }) {
 }
 
 // ---------------------------------------------------------------------------
+// ExecutedSqlBlock — code block with copy button (top-right) for db_query SQL
+// ---------------------------------------------------------------------------
+
+function ExecutedSqlBlock({ sql }: { sql: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // clipboard API unavailable — silent fail
+    }
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: "var(--text-dim)",
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+          marginBottom: 4,
+        }}
+      >
+        Executed SQL
+      </div>
+      <pre
+        className="mono"
+        style={{
+          margin: 0,
+          padding: "10px 64px 10px 12px",
+          background: "var(--bg-elev-3)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: 6,
+          fontSize: 12,
+          lineHeight: 1.5,
+          color: "var(--text-strong)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          overflowX: "auto",
+        }}
+      >
+        {sql}
+      </pre>
+      <button
+        type="button"
+        onClick={handleCopy}
+        style={{
+          position: "absolute",
+          top: 22,
+          right: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          fontSize: 10,
+          fontWeight: 500,
+          background: copied ? "var(--success)" : "var(--bg-elev-2)",
+          color: copied ? "var(--bg)" : "var(--text-muted)",
+          border: "1px solid var(--border-subtle)",
+          borderRadius: 4,
+          cursor: "pointer",
+          transition: "background 120ms, color 120ms",
+        }}
+        onMouseEnter={(e) => {
+          if (!copied) e.currentTarget.style.color = "var(--text-strong)";
+        }}
+        onMouseLeave={(e) => {
+          if (!copied) e.currentTarget.style.color = "var(--text-muted)";
+        }}
+      >
+        <CopyGlyph />
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+function CopyGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ToolResultInlineViz — render chart/table directly from tool_result data
 // ---------------------------------------------------------------------------
 
@@ -212,38 +301,7 @@ function ToolResultInlineViz({
             gap: 10,
           }}
         >
-          {executedSql && (
-            <details>
-              <summary
-                style={{
-                  cursor: "pointer",
-                  fontSize: 11,
-                  color: "var(--text-dim)",
-                  userSelect: "none",
-                }}
-              >
-                Executed SQL
-              </summary>
-              <pre
-                className="mono"
-                style={{
-                  margin: "6px 0 0",
-                  padding: "10px 12px",
-                  background: "var(--bg-elev-3)",
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  lineHeight: 1.5,
-                  color: "var(--text-strong)",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  overflowX: "auto",
-                }}
-              >
-                {executedSql}
-              </pre>
-            </details>
-          )}
+          {executedSql && <ExecutedSqlBlock sql={executedSql} />}
           <InlineViz data={data} vizHint={vizHint} />
         </div>
       )}

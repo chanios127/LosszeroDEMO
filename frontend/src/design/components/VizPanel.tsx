@@ -1217,7 +1217,6 @@ export function SwitchableViz({
         <AggregatePanel data={data} spec={aggSpec} onChange={setAggSpec} />
       )}
       <Viz data={displayData} />
-      <VizDebugInfo data={displayData} vizHint={hint} />
       {drill && (
         <DrilldownModal
           data={displayData}
@@ -1225,73 +1224,6 @@ export function SwitchableViz({
           title={title}
           onClose={() => setDrill(false)}
         />
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Debug metadata (shown only when Tweaks "Debug Viz" toggle is on, via CSS)
-// ---------------------------------------------------------------------------
-
-function VizDebugInfo({
-  data,
-  vizHint,
-}: {
-  data: Record<string, unknown>[];
-  vizHint: VizHint;
-}) {
-  const cols = Object.keys(data[0] ?? {});
-  const types = cols.map((c) => {
-    const nonNullSample = data.find((r) => r[c] != null)?.[c];
-    const t =
-      nonNullSample === undefined ? "null" : typeof nonNullSample;
-    return `${c}:${t}`;
-  });
-  return (
-    <div
-      className="viz-debug mono"
-      style={{
-        marginTop: 10,
-        padding: "8px 10px",
-        background: "var(--bg-elev-2)",
-        border: "1px dashed var(--border-subtle)",
-        borderRadius: 8,
-        fontSize: 10,
-        color: "var(--text-muted)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-        <span>
-          viz_hint=<strong style={{ color: "var(--brand-500)" }}>{vizHint}</strong>
-        </span>
-        <span>
-          rows=<strong style={{ color: "var(--text-strong)" }}>{data.length}</strong>
-        </span>
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-          cols=[<span style={{ color: "var(--text-strong)" }}>{types.join(", ")}</span>]
-        </span>
-      </div>
-      {data[0] && (
-        <details>
-          <summary style={{ cursor: "pointer", color: "var(--text-dim)" }}>
-            first row
-          </summary>
-          <pre
-            style={{
-              margin: "6px 0 0",
-              fontSize: 10,
-              color: "var(--text-muted)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-all",
-            }}
-          >
-            {JSON.stringify(data[0], null, 2)}
-          </pre>
-        </details>
       )}
     </div>
   );
