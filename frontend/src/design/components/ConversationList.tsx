@@ -231,14 +231,12 @@ export default function ConversationList({
 
   const filtered = useMemo(
     () =>
-      conversations
-        .filter((c) => {
-          if (!search.trim()) return true;
-          const q = search.toLowerCase();
-          if (c.title.toLowerCase().includes(q)) return true;
-          return c.messages.some((m) => m.content.toLowerCase().includes(q));
-        })
-        .sort((a, b) => b.updatedAt - a.updatedAt),
+      conversations.filter((c) => {
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        if (c.title.toLowerCase().includes(q)) return true;
+        return c.messages.some((m) => m.content.toLowerCase().includes(q));
+      }),
     [conversations, search],
   );
 

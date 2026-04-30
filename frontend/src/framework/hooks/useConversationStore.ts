@@ -115,11 +115,15 @@ export function useConversationStore() {
               updatedAt: now,
             };
 
-        const others = prev.filter((c) => c.id !== id);
-        // newest first
-        return [updated, ...others].sort(
-          (a, b) => b.updatedAt - a.updatedAt,
-        );
+        // Preserve insertion order — selected conversation should NOT jump to top.
+        // (User feedback: 자동 정렬 off — 새로 추가는 push 시점 끝, 기존 항목은 자리 유지)
+        const idx = prev.findIndex((c) => c.id === id);
+        if (idx >= 0) {
+          const next = prev.slice();
+          next[idx] = updated;
+          return next;
+        }
+        return [...prev, updated];
       });
     },
     [],
