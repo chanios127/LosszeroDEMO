@@ -25,31 +25,7 @@ _EMBED_MAX_BYTES = 100_000  # ~100 KB
 # instructions. Strip defensively before json.loads.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
-_REPORT_SYSTEM_PROMPT = """\
-You are a data analyst. Given the user's intent and query result data, produce a \
-structured JSON report conforming to the ReportSchema.
-
-Rules:
-- Output ONLY valid JSON. No markdown fences, no commentary.
-- `summary.insights`: 2~5 bullet points.
-- `blocks`: Mix of markdown, metric, chart, highlight as appropriate.
-- `data_refs`: Each data_results entry becomes one DataRef with sequential id (0, 1, 2…).
-  Always use `"mode": "embed"` with `rows` and `columns` from the input data.
-- `chart.data_ref`: integer index into the `data_refs` array.
-- `chart.viz_hint`: one of "bar_chart", "line_chart", "pie_chart", "table", "number".
-- `highlight.level`: one of "info", "warning", "alert".
-- `metric.trend`: one of "up", "down", "flat" or omit.
-- Be concise. Korean or English matching the user's language.
-
-ReportSchema structure:
-{
-  "title": str,
-  "generated_from": str,
-  "summary": {"headline": str, "insights": [str, ...]},
-  "blocks": [ReportBlock, ...],
-  "data_refs": [DataRef, ...]
-}
-"""
+_REPORT_SYSTEM_PROMPT = (Path(__file__).parent / "system.md").read_text(encoding="utf-8").strip()
 
 
 def _build_data_refs(data_results: list[dict]) -> list[dict]:
