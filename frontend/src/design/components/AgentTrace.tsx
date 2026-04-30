@@ -134,14 +134,50 @@ export function ToolStep({ event }: { event: AgentEvent }) {
 // ExecutedSqlBlock — code block with copy button (top-right) for db_query SQL
 // ---------------------------------------------------------------------------
 
+// Lightweight SQL pretty-printer: inserts newlines + indent at major clauses.
+// Not a full parser — purely for display when LLM emits one-line SQL.
+function formatSqlForDisplay(raw: string): string {
+  let s = raw.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+  // Major clauses → newline before
+  const major = [
+    "FROM",
+    "WHERE",
+    "INNER JOIN",
+    "LEFT JOIN",
+    "RIGHT JOIN",
+    "FULL JOIN",
+    "CROSS JOIN",
+    "JOIN",
+    "GROUP BY",
+    "ORDER BY",
+    "HAVING",
+    "UNION ALL",
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+  ];
+  for (const kw of major) {
+    s = s.replace(new RegExp(`\\s+${kw}\\b`, "gi"), `\n${kw}`);
+  }
+  // Continuation predicates → newline + 2-space indent
+  s = s.replace(/\s+(AND|OR)\b/gi, "\n  $1");
+  s = s.replace(/\s+ON\b/gi, "\n  ON");
+  // SELECT comma list → newline + 4-space indent
+  // (only between SELECT and FROM, conservative: replace top-level commas after SELECT)
+  s = s.replace(/^(SELECT(?:\s+TOP\s+\d+)?)\s+/i, "$1\n    ");
+  s = s.replace(/,\s*(?=(?:[^']*'[^']*')*[^']*$)/g, ",\n    ");
+  return s;
+}
+
 function ExecutedSqlBlock({ sql }: { sql: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const formatted = formatSqlForDisplay(sql);
   const handleCopy = async (e: { preventDefault: () => void; stopPropagation: () => void }) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      await navigator.clipboard.writeText(sql);
+      await navigator.clipboard.writeText(formatted);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
@@ -183,7 +219,7 @@ function ExecutedSqlBlock({ sql }: { sql: string }) {
             overflowX: "auto",
           }}
         >
-          {sql}
+          {formatted}
         </pre>
         <button
           type="button"
