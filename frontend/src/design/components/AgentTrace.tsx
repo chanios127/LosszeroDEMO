@@ -139,11 +139,13 @@ function ToolResultInlineViz({
   rows,
   tool,
   turn,
+  executedSql,
 }: {
   data: Record<string, unknown>[];
   rows: number | null;
   tool: string;
   turn: number;
+  executedSql?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const vizHint = inferVizHint(data);
@@ -205,8 +207,43 @@ function ToolResultInlineViz({
           style={{
             borderTop: "1px solid var(--border-subtle)",
             padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
           }}
         >
+          {executedSql && (
+            <details>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: 11,
+                  color: "var(--text-dim)",
+                  userSelect: "none",
+                }}
+              >
+                Executed SQL
+              </summary>
+              <pre
+                className="mono"
+                style={{
+                  margin: "6px 0 0",
+                  padding: "10px 12px",
+                  background: "var(--bg-elev-3)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "var(--text-strong)",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  overflowX: "auto",
+                }}
+              >
+                {executedSql}
+              </pre>
+            </details>
+          )}
           <InlineViz data={data} vizHint={vizHint} />
         </div>
       )}
@@ -236,6 +273,15 @@ export function CollapsibleTrace({ events }: { events: AgentEvent[] }) {
       (e.output as unknown[]).length > 0,
   );
 
+  // Pair each dataResult with its tool_start (matched by turn + tool) to
+  // surface invocation inputs (e.g. the executed SQL for db_query).
+  const inputByTurnTool = new Map<string, Record<string, unknown>>();
+  for (const ev of events) {
+    if (ev.type === "tool_start") {
+      inputByTurnTool.set(`${ev.turn}:${ev.tool}`, ev.input);
+    }
+  }
+
   const isStillRunning = toolEvents.some((e, i) => {
     if (e.type !== "tool_start") return false;
     // Check if there's a matching tool_result after
@@ -254,15 +300,23 @@ export function CollapsibleTrace({ events }: { events: AgentEvent[] }) {
       }}
     >
       {/* Inline data visualizations from tool_result events */}
-      {dataResults.map((ev, i) => (
-        <ToolResultInlineViz
-          key={`viz-${i}`}
-          data={ev.output as Record<string, unknown>[]}
-          rows={ev.rows}
-          tool={ev.tool}
-          turn={ev.turn}
-        />
-      ))}
+      {dataResults.map((ev, i) => {
+        const input = inputByTurnTool.get(`${ev.turn}:${ev.tool}`);
+        const sql =
+          ev.tool === "db_query" && typeof input?.sql === "string"
+            ? (input.sql as string)
+            : undefined;
+        return (
+          <ToolResultInlineViz
+            key={`viz-${i}`}
+            data={ev.output as Record<string, unknown>[]}
+            rows={ev.rows}
+            tool={ev.tool}
+            turn={ev.turn}
+            executedSql={sql}
+          />
+        );
+      })}
 
       {/* Full trace (collapsed by default) */}
       <div
