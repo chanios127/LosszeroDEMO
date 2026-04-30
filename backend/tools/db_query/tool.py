@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from pathlib import Path
 from typing import Any
 
 from db.connection import get_connection
@@ -16,8 +15,6 @@ _BLOCKED = re.compile(
     r"MERGE|REPLACE|CALL|GRANT|REVOKE|COMMIT|ROLLBACK)\b",
     re.IGNORECASE,
 )
-
-_DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="utf-8").strip()
 
 
 def _assert_read_only(sql: str) -> None:
@@ -79,10 +76,6 @@ class DBQueryTool(Tool):
     @property
     def name(self) -> str:
         return "db_query"
-
-    @property
-    def description(self) -> str:
-        return _DESCRIPTION
 
     def schema(self) -> ToolSchema:
         return {
