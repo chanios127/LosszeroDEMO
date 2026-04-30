@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Conversation } from "../types/chat";
-import { IconPlus, IconSearch, IconSpinner } from "./icons";
-import { Button, fmtRel } from "./primitives";
+import { IconPlus, IconSearch } from "./icons";
+import { Button, Dot, fmtRel } from "./primitives";
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -104,13 +104,9 @@ function ConversationItem({
             {streaming && (
               <span
                 aria-label="응답 생성 중"
-                style={{
-                  display: "inline-flex",
-                  flexShrink: 0,
-                  color: "var(--brand-500)",
-                }}
+                style={{ display: "inline-flex", flexShrink: 0 }}
               >
-                <IconSpinner width={12} height={12} />
+                <Dot tone="brand" />
               </span>
             )}
             <span
