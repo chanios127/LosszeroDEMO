@@ -1,3 +1,13 @@
+---
+name: korean-sql
+type: rule
+version: 1
+applies_to:
+  - system_prompt
+referenced_by:
+  - db_query
+---
+
 # Korean text in SQL (strict)
 
 - Database identifiers (table/column names) are **always ASCII** — e.g. `wb_Title`, `td_myUid`, `LZXP310T`. Korean tokens NEVER appear as bare identifiers. Verify against the domain schema or `list_tables` before SELECT.

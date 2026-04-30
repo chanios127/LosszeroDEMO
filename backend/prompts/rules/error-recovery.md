@@ -1,3 +1,14 @@
+---
+name: error-recovery
+type: rule
+version: 1
+applies_to:
+  - system_prompt
+referenced_by:
+  - db_query
+  - sp_call
+---
+
 # Error recovery
 
 - If a query returns 'Invalid column name' or 'Korean column or string literal detected', do NOT guess the correct name. Follow this priority:

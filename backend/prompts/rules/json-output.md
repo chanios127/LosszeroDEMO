@@ -1,3 +1,14 @@
+---
+name: json-output
+type: rule
+version: 1
+applies_to:
+  - sub_agent_prompt
+referenced_by:
+  - build_report
+  - build_view
+---
+
 # JSON output rules (for LLM-generated JSON)
 
 When emitting JSON (e.g. ReportSchema, axis hints, structured tool input), follow these strict rules:

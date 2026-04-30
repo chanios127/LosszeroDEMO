@@ -1,3 +1,13 @@
+---
+name: report-block-types
+type: rule
+version: 1
+applies_to:
+  - sub_agent_prompt
+referenced_by:
+  - build_report
+---
+
 # ReportSchema block types (strict enum)
 
 The `blocks` array in ReportSchema accepts EXACTLY these four `type` values. No other types are valid (no `metric_group`, `kpi_grid`, `table`, `comparison`, `card`, etc.):

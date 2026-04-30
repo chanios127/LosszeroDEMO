@@ -1,3 +1,14 @@
+---
+name: result-size
+type: rule
+version: 1
+applies_to:
+  - system_prompt
+referenced_by:
+  - db_query
+  - sp_call
+---
+
 # Result size
 
 - Always cap result size with `TOP N` (T-SQL) — never issue an unbounded SELECT against transactional tables. Default to `TOP 100` for samples; use `TOP 1000` only when downstream aggregation requires more rows.
