@@ -18,5 +18,6 @@ design-export/
 
 # Cycle 2 — runtime report archive (Pydantic JSON, REPORTS_DATA_DIR override)
 storage/reports/*.json
-# Phase 11 hotfix snapshot output dir (debug-hotfixer / supervisor scratch)
-reports/
+# Phase 11 hotfix snapshot output dir (debug-hotfixer / supervisor scratch).
+# Anchored to repo root so seed/reports/ (curated PT gold reports) stays tracked.
+/reports/

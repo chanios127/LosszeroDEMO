@@ -1,0 +1,424 @@
+{
+  "id": "gold-customer-as-90d",
+  "title": "거래처별 AS 요청 패턴 분석 (최근 90일)",
+  "created_at": "2026-04-30T15:32:04.973Z",
+  "domain": "3z",
+  "tags": [
+    "AS",
+    "거래처",
+    "패턴",
+    "90일",
+    "alert"
+  ],
+  "summary": "총 156건 / 24개 거래처. (주)옥스머티리얼즈 28% 단일 최대, 재발률 33%로 품질 이슈 패턴 감지. SLA 위반 4건 발생 — 근본 원인 분석 권장.",
+  "meta": {
+    "blocks": 7,
+    "dataRefs": 5,
+    "schemaVersion": "2"
+  },
+  "schema": {
+    "title": "거래처별 AS 요청 패턴 분석 (최근 90일)",
+    "generated_from": "3z MES: WB_IssueMaster + 거래처 mapping (90일 window)",
+    "summary": {
+      "headline": "총 156건 / 24개 거래처. 옥스머티리얼즈 28% 단일 최대, 재발률 33% 품질 이슈 감지. SLA 위반 4건.",
+      "insights": [
+        "기능요청이 96% 비중 — 시스템 개선 수요 집중",
+        "옥스머티리얼즈는 재고/오류 카테고리 재발 패턴 (4/12 재발)",
+        "성수기전·옥스머티리얼즈는 방사형 분포에서 평균과 뚜렷한 편차",
+        "SLA 위반 4건 모두 작업유형='기능개선' + 처리상태='9'(대기) 조합"
+      ]
+    },
+    "blocks": [
+      {
+        "type": "kpi_grid",
+        "title": "🚨 거래처 위험도 KPI",
+        "columns": 4,
+        "metrics": [
+          {
+            "label": "총 요청",
+            "value": 156,
+            "unit": "건",
+            "severity": "neutral"
+          },
+          {
+            "label": "최다 거래처 비중",
+            "value": "28",
+            "unit": "%",
+            "delta": "옥스머티리얼즈",
+            "severity": "warning"
+          },
+          {
+            "label": "재발률 (Top 1)",
+            "value": "33",
+            "unit": "%",
+            "severity": "alert"
+          },
+          {
+            "label": "SLA 위반",
+            "value": 4,
+            "unit": "건",
+            "delta": "기능개선 카테고리",
+            "severity": "alert"
+          }
+        ]
+      },
+      {
+        "type": "chart",
+        "viz_hint": "pie_chart",
+        "data_ref": 0,
+        "x": "작업유형명",
+        "y": "건수",
+        "title": "작업유형 분포"
+      },
+      {
+        "type": "ranked_list",
+        "title": "거래처별 요청 건수 Top 5",
+        "data_ref": 1,
+        "fields": {
+          "name": "거래처명",
+          "primary": "요청건수표시",
+          "secondary": "재발률표시",
+          "tags": "주요유형"
+        },
+        "limit": 5,
+        "highlight_top": 3
+      },
+      {
+        "type": "bubble_breakdown",
+        "title": "키워드 클러스터 (현안 제목 기반)",
+        "data_ref": 2,
+        "bubble": {
+          "label": "키워드",
+          "size": "등장횟수",
+          "x": "거래처다양성"
+        },
+        "cards": [
+          {
+            "title": "재고",
+            "primary": "32건 등장",
+            "secondary": "8개 거래처",
+            "tags": [
+              "재고생성",
+              "수불",
+              "재고량"
+            ]
+          },
+          {
+            "title": "오류",
+            "primary": "28건 등장",
+            "secondary": "11개 거래처",
+            "tags": [
+              "프로그램",
+              "팝업",
+              "확인"
+            ]
+          },
+          {
+            "title": "기능",
+            "primary": "24건 등장",
+            "secondary": "15개 거래처",
+            "tags": [
+              "변경",
+              "추가",
+              "개선"
+            ]
+          }
+        ],
+        "layout": "row"
+      },
+      {
+        "type": "chart",
+        "viz_hint": "radar",
+        "data_ref": 3,
+        "x": "category",
+        "y": "value",
+        "group_by": "series",
+        "title": "Top 3 거래처 vs 전사 평균 (카테고리별 분포)"
+      },
+      {
+        "type": "highlight",
+        "level": "alert",
+        "message": "옥스머티리얼즈 재발률 33%(4/12) — 재고 관리 로직 + 키오스크 자재 투입 패턴이 반복 발생. 근본 원인 워크숍 권장.",
+        "related_data": 1
+      },
+      {
+        "type": "highlight",
+        "level": "warning",
+        "message": "SLA 위반 4건 모두 작업유형='2'(기능개선) + 처리상태='9'(대기). 기능 요청 SLA 정책 재검토 필요."
+      }
+    ],
+    "data_refs": [
+      {
+        "id": 0,
+        "mode": "embed",
+        "columns": [
+          {
+            "name": "작업유형명",
+            "type": "string"
+          },
+          {
+            "name": "건수",
+            "type": "int"
+          }
+        ],
+        "rows": [
+          {
+            "작업유형명": "기능개선",
+            "건수": 150
+          },
+          {
+            "작업유형명": "오류대응",
+            "건수": 6
+          }
+        ]
+      },
+      {
+        "id": 1,
+        "mode": "embed",
+        "columns": [
+          {
+            "name": "거래처명",
+            "type": "string"
+          },
+          {
+            "name": "요청건수표시",
+            "type": "string"
+          },
+          {
+            "name": "재발률표시",
+            "type": "string"
+          },
+          {
+            "name": "주요유형",
+            "type": "string"
+          }
+        ],
+        "rows": [
+          {
+            "거래처명": "(주)옥스머티리얼즈",
+            "요청건수표시": "44건",
+            "재발률표시": "재발률 33%",
+            "주요유형": "재고,오류,키오스크"
+          },
+          {
+            "거래처명": "(주)성수기전",
+            "요청건수표시": "31건",
+            "재발률표시": "재발률 19%",
+            "주요유형": "품질,LOT,완료보고"
+          },
+          {
+            "거래처명": "동광전자(주)",
+            "요청건수표시": "18건",
+            "재발률표시": "재발률 11%",
+            "주요유형": "전표,컬럼,휴가"
+          },
+          {
+            "거래처명": "에이유(넥스텍)",
+            "요청건수표시": "14건",
+            "재발률표시": "재발률 14%",
+            "주요유형": "재고,LOG"
+          },
+          {
+            "거래처명": "쓰리젯",
+            "요청건수표시": "12건",
+            "재발률표시": "재발률 8%",
+            "주요유형": "검사성적서,부서"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "mode": "embed",
+        "columns": [
+          {
+            "name": "키워드",
+            "type": "string"
+          },
+          {
+            "name": "등장횟수",
+            "type": "int"
+          },
+          {
+            "name": "거래처다양성",
+            "type": "int"
+          }
+        ],
+        "rows": [
+          {
+            "키워드": "재고",
+            "등장횟수": 32,
+            "거래처다양성": 8
+          },
+          {
+            "키워드": "오류",
+            "등장횟수": 28,
+            "거래처다양성": 11
+          },
+          {
+            "키워드": "기능변경",
+            "등장횟수": 24,
+            "거래처다양성": 15
+          },
+          {
+            "키워드": "BOM",
+            "등장횟수": 9,
+            "거래처다양성": 4
+          },
+          {
+            "키워드": "전표",
+            "등장횟수": 8,
+            "거래처다양성": 5
+          },
+          {
+            "키워드": "키오스크",
+            "등장횟수": 6,
+            "거래처다양성": 2
+          },
+          {
+            "키워드": "검사",
+            "등장횟수": 5,
+            "거래처다양성": 3
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "mode": "embed",
+        "columns": [
+          {
+            "name": "category",
+            "type": "string"
+          },
+          {
+            "name": "value",
+            "type": "int"
+          },
+          {
+            "name": "series",
+            "type": "string"
+          }
+        ],
+        "rows": [
+          {
+            "category": "재고",
+            "value": 14,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "오류",
+            "value": 9,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "기능",
+            "value": 12,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "BOM",
+            "value": 5,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "전표",
+            "value": 1,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "검사",
+            "value": 3,
+            "series": "옥스머티리얼즈"
+          },
+          {
+            "category": "재고",
+            "value": 4,
+            "series": "성수기전"
+          },
+          {
+            "category": "오류",
+            "value": 6,
+            "series": "성수기전"
+          },
+          {
+            "category": "기능",
+            "value": 11,
+            "series": "성수기전"
+          },
+          {
+            "category": "BOM",
+            "value": 2,
+            "series": "성수기전"
+          },
+          {
+            "category": "전표",
+            "value": 4,
+            "series": "성수기전"
+          },
+          {
+            "category": "검사",
+            "value": 4,
+            "series": "성수기전"
+          },
+          {
+            "category": "재고",
+            "value": 6,
+            "series": "전사평균"
+          },
+          {
+            "category": "오류",
+            "value": 7,
+            "series": "전사평균"
+          },
+          {
+            "category": "기능",
+            "value": 10,
+            "series": "전사평균"
+          },
+          {
+            "category": "BOM",
+            "value": 3,
+            "series": "전사평균"
+          },
+          {
+            "category": "전표",
+            "value": 3,
+            "series": "전사평균"
+          },
+          {
+            "category": "검사",
+            "value": 3,
+            "series": "전사평균"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "mode": "embed",
+        "columns": [
+          {
+            "name": "처리상태명",
+            "type": "string"
+          },
+          {
+            "name": "건수",
+            "type": "int"
+          }
+        ],
+        "rows": [
+          {
+            "처리상태명": "완료",
+            "건수": 142
+          },
+          {
+            "처리상태명": "대기",
+            "건수": 12
+          },
+          {
+            "처리상태명": "취소",
+            "건수": 2
+          }
+        ]
+      }
+    ]
+  }
+}
