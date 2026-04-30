@@ -47,3 +47,7 @@ Rules:
 
 `chart.data_ref`: integer index into `data_refs`.
 `highlight.related_data`: integer index into `data_refs`, optional.
+
+# Input truncation / sampling
+
+The user payload may include a `sampling_meta` array describing per-result row caps and cell-text truncation that the server applied before handing data to you. Long string cells appear as `"...(truncated, N chars)"`. When `row_truncated: true` or `cell_truncations > 0`, mention the limitation explicitly in `summary.headline` or a `highlight` block (e.g. "상위 30행 기준" / "본문 일부 발췌") so the reader knows the analysis is sampled rather than full-population.
