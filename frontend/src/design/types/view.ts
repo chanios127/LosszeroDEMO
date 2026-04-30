@@ -12,7 +12,12 @@ export type ViewBlockComponent =
   | "MarkdownBlock"
   | "MetricCard"
   | "ChartBlock"
-  | "HighlightCard";
+  | "HighlightCard"
+  | "BubbleBreakdownBlock"
+  | "KpiGridBlock"
+  | "RankedListBlock"
+  | "GanttBlock"
+  | "RadarBlock";
 
 export interface ViewBlockSpec {
   /** Index into ReportSchema.blocks[] — must align 1:1 with the schema. */

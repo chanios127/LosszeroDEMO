@@ -1,6 +1,13 @@
 // Mirror of backend agent/events.py
 
-export type VizHint = "bar_chart" | "line_chart" | "pie_chart" | "table" | "number";
+export type VizHint =
+  | "bar_chart"
+  | "line_chart"
+  | "pie_chart"
+  | "table"
+  | "number"
+  | "gantt"
+  | "radar";
 
 export interface ToolStartEvent {
   type: "tool_start";

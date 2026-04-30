@@ -558,6 +558,8 @@ export function NumberCard({ data }: { data: Record<string, unknown>[] }) {
 // Viz hint → component map
 // ---------------------------------------------------------------------------
 
+// gantt/radar are routed to dedicated GanttBlock/RadarBlock at the ReportContainer level
+// and never reach SwitchableViz. Mapped here only to satisfy Record<VizHint, _> exhaustiveness.
 export const VIZ_MAP: Record<
   VizHint,
   React.FC<{ data: Record<string, unknown>[] }>
@@ -567,6 +569,8 @@ export const VIZ_MAP: Record<
   pie_chart: ChartPieViz,
   table: DataTable,
   number: NumberCard,
+  gantt: ChartBarViz,
+  radar: ChartBarViz,
 };
 
 export const VIZ_ICON_MAP: Record<VizHint, string> = {
@@ -575,6 +579,8 @@ export const VIZ_ICON_MAP: Record<VizHint, string> = {
   pie_chart: "◕",
   table: "⊞",
   number: "#",
+  gantt: "▥",
+  radar: "◎",
 };
 
 const VIZ_LABELS: Record<VizHint, string> = {
@@ -583,6 +589,8 @@ const VIZ_LABELS: Record<VizHint, string> = {
   pie_chart: "Pie",
   table: "Table",
   number: "Number",
+  gantt: "Gantt",
+  radar: "Radar",
 };
 
 function iconFor(hint: VizHint) {
@@ -597,6 +605,9 @@ function iconFor(hint: VizHint) {
       return <IconTable />;
     case "number":
       return <IconHash />;
+    case "gantt":
+    case "radar":
+      return <IconBar />;
   }
 }
 

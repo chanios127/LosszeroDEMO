@@ -4,6 +4,11 @@ import { MetricCard } from "./MetricCard";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { HighlightCard } from "./HighlightCard";
 import { ChartBlock } from "./ChartBlock";
+import { BubbleBreakdownBlock } from "./BubbleBreakdownBlock";
+import { KpiGridBlock } from "./KpiGridBlock";
+import { RankedListBlock } from "./RankedListBlock";
+import { GanttBlock } from "./GanttBlock";
+import { RadarBlock } from "./RadarBlock";
 
 interface ReportContainerProps {
   schema: ReportSchema;
@@ -46,6 +51,55 @@ function renderByComponent(
         );
       }
       return null;
+    case "BubbleBreakdownBlock":
+      if (block.type === "bubble_breakdown") {
+        return (
+          <BubbleBreakdownBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      return null;
+    case "KpiGridBlock":
+      if (block.type === "kpi_grid") {
+        return <KpiGridBlock key={key} {...block} />;
+      }
+      return null;
+    case "RankedListBlock":
+      if (block.type === "ranked_list") {
+        return (
+          <RankedListBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      return null;
+    case "GanttBlock":
+      if (block.type === "chart") {
+        return (
+          <GanttBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      return null;
+    case "RadarBlock":
+      if (block.type === "chart") {
+        return (
+          <RadarBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      return null;
   }
 }
 
@@ -63,8 +117,44 @@ function renderByType(
     case "highlight":
       return <HighlightCard key={key} {...block} />;
     case "chart":
+      if (block.viz_hint === "gantt") {
+        return (
+          <GanttBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
+      if (block.viz_hint === "radar") {
+        return (
+          <RadarBlock
+            key={key}
+            block={block}
+            dataRef={dataRefs[block.data_ref]}
+          />
+        );
+      }
       return (
         <ChartBlock
+          key={key}
+          block={block}
+          dataRef={dataRefs[block.data_ref]}
+        />
+      );
+    case "bubble_breakdown":
+      return (
+        <BubbleBreakdownBlock
+          key={key}
+          block={block}
+          dataRef={dataRefs[block.data_ref]}
+        />
+      );
+    case "kpi_grid":
+      return <KpiGridBlock key={key} {...block} />;
+    case "ranked_list":
+      return (
+        <RankedListBlock
           key={key}
           block={block}
           dataRef={dataRefs[block.data_ref]}
