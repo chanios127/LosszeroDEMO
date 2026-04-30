@@ -88,7 +88,13 @@ main HEAD `f751cca` (Phase C merge). origin 동기화. **Cycle 2 종료** (A=`3f
 
 ## Cycle 2 종료 정리 큐
 
-1. **라이브 회귀** (사용자 환경): 시나리오 1·2 체인 끝까지 + HITL 보관/버리기 flow + error-case D6/D5/D1/A6/F7 + 폴리시 7건 시각 회귀
+1. **라이브 회귀** (사용자 환경) — 단계별 진행 결정 (2026-04-30 사용자 명시):
+   - **(a) 경량형 instruct 모델**: ❌ 실패 확정. D11 (build_schema/report_generate user_intent input shape 위반 KeyError) + D11-b (false-success 환각, HITL 신뢰성 붕괴) + Harmony/컨텍스트 누수 동시 발생. error-case.md §D11 박제, 코드 수정 보류 (memory `feedback_no_llm_overfit.md` 적용)
+   - **(b) 중형 모델**: 다음 단계. 사용자 환경에서 더 안정적인 중형 instruct 모델로 시나리오 1·2 + HITL flow 재시도
+   - **(c) 추론 모델**: (b) 실패/부분실패 시 진행. 느리지만 안정적. thinking ON + max_tokens 12000+
+   - **(d) Claude API**: (b)/(c) 결과 평가 후 최종 회귀. provider 전환 (`LLM_PROVIDER=claude` + `ANTHROPIC_API_KEY` + Sonnet 권장)
+   - 회귀 통과 단계의 모델을 권장 모델로 박제. 미통과 단계는 LM Studio 미지원 영구 잔재 처리.
+   - 시나리오 1·2 체인 끝까지 + HITL 보관/버리기 flow + error-case D6/D5/D1/A6/F7 + 폴리시 7건 시각 회귀
 2. **agent worktree 정리** (라이브 회귀 통과 후): `git worktree remove ../LosszeroDEMO-backend-infra && git branch -d agent/backend-infra` + `git worktree remove ../LosszeroDEMO-front-view && git branch -d agent/front-view` (자율 정리는 agent 측 의무, supervisor는 user-signal 받으면 prune)
 3. **dead-code 정리 사이클** (별도): ReportDemoPage.tsx + sample.json fixture + VizDebugInfo `data-debug-viz` toggle / `.viz-debug` CSS / BUILD_REPORT_MAX_* env var 명 갱신 — 한 commit으로 묶을 후보
 4. **report_generate 트리거 phrase 미세조정** (라이브 결과 의존): system.md "보존/저장" 의도 감지가 LLM 모델 차이로 누락/과호출 시 phrase 조정
