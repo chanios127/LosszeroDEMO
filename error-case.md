@@ -87,6 +87,23 @@ httpcore.ReadTimeout → httpx.ReadTimeout
 **해결**: env 설정 또는 startup warning 1줄. plan P2.
 **참조**: snapshot §10·§11
 
+### A5. 🟡 Gemma 3/4 계열 thinking block 마커 비표준 — `<think>` strip 미작동
+**발생 시점**: 2026-04-30 (Cycle 2 시나리오 라이브 회귀, 모델 `gemma 4 26b a4b` 추정)
+**증상**:
+- 콘솔에 `🧠 [THINK]` 헤더만 출력되고 본문 0줄. 매 turn 반복 (3회 연속).
+- LLM 출력은 정상 (db_query 호출 + retry 3회 후 성공). thinking content는 어디로 사라지는지 불명.
+**가설**:
+1. Gemma chat_template이 `<think>...</think>` 마커 미사용 (`<start_of_turn>model` thinking section 또는 별도 토큰 사용 추정). backend `<think>` strip 정규식이 못 잡음 → 본문이 다른 channel로 출력되어 콘솔 표시 누락
+2. LLM이 reasoning 자체를 생략 (small/lightweight Gemma는 thinking 단계 없이 바로 tool_call 생성)
+3. thinking 컨텐츠가 assistant text/tool_call 안으로 누수 (D11-b Harmony 누수와 동일 mechanism)
+**위치**: `backend/llm/lm_studio.py` `_HarmonyTransformer` + thinking strip 정규식 (위치 확인 필요)
+**해결 후보**:
+1. **(권장)** Gemma 비대상 모델로 전환 — Qwen 2.5/3.x, Llama 3.x 권장 (lmstudio-community 검증 빌드)
+2. (보류) Gemma chat_template 토큰 분석 후 backend 정규식 확장 — 모델 한계 과적합 위험 (memory `feedback_no_llm_overfit.md` 적용)
+3. observability: 모델별 thinking 마커 매핑 테이블 도입 — Phase 12 후 별도 사이클
+**연관**: D11/D11-b/Harmony 누수와 동일 토크나이저 경계 결함 family. instruct 모델 chat_template 다양성 문제의 한 단면.
+**우선순위**: 🟡 P2 (모델 한계). 다른 모델로 회귀 통과 시 영구 잔재 처리.
+
 ---
 
 ## B. Tool 입력 검증
