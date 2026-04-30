@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from tools.build_report.schema import ReportSchema
+from tools.build_schema.schema import ReportSchema
 
 
 # Block type → frontend component mapping

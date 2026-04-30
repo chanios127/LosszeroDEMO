@@ -27,7 +27,7 @@ from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
 from llm import get_provider
 from llm.base import Message
-from tools.build_report import BuildReportTool
+from tools.build_schema import BuildSchemaTool
 from tools.build_view import BuildViewTool
 from tools.db_query import DBQueryTool
 from tools.list_tables import ListTablesTool
@@ -373,7 +373,7 @@ async def start_query(body: QueryRequest):
         llm = get_provider()
         tools = [
             ListTablesTool(), DBQueryTool(), SPCallTool(),
-            BuildReportTool(llm=llm), BuildViewTool(llm=llm),
+            BuildSchemaTool(llm=llm), BuildViewTool(llm=llm),
         ]
         max_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
 

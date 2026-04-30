@@ -9,7 +9,7 @@ from typing import Any
 from llm.base import LLMEventType, LLMProvider, Message, ToolSchema
 from prompts.loader import get_subagent_system
 from tools.base import Tool
-from tools.build_report.schema import ChartBlock, ReportSchema
+from tools.build_schema.schema import ChartBlock, ReportSchema
 
 from .schema import BLOCK_COMPONENT_MAP, ViewBlockSpec, ViewBundle
 
@@ -50,7 +50,7 @@ class BuildViewTool(Tool):
                 "properties": {
                     "report_schema": {
                         "type": "object",
-                        "description": "build_report 출력 ReportSchema dict",
+                        "description": "build_schema 출력 ReportSchema dict",
                     },
                 },
                 "required": ["report_schema"],
