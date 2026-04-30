@@ -1,14 +1,16 @@
 # Supervisor Snapshot
 
-> 최종 갱신: 2026-04-30 (Cycle 2 Phase A 정합 통과 시점)
-> 본 파일은 supervisor 세션 cold-start 시 최우선 정독 대상. 코드 변경 0인 운영 메타.
-> Phase 6.5 ~ 11의 전체 박제 본문은 git `943ab23:supervisorSnapshot.md`에 영구 보존됨 — 필요 시 `git show 943ab23:supervisorSnapshot.md`로 회수.
+> 최종 갱신: 2026-04-30 (Cycle 2 Phase A 머지 + snapshot 추가 압축)
+> 본 파일은 supervisor 세션 cold-start 시 최우선 정독 대상. **결정 박제소** + active operational context. 코드 변경 0.
+> 압축 정책: 완료된 phase / commit log는 ROADMAP `§"✅ Phase X 처리됨"` + git log가 진실 소스. 본 snapshot은 결정 + 잠금 + 진행 중 사이클만.
+> 진행 중 사이클이 종료되면 후속 supervisor가 본 snapshot의 active 섹션을 historical로 강등 + 압축.
+> 본 snapshot 이전 본문 (§1~§17 전체) = `git show 943ab23:supervisorSnapshot.md`. 추가 압축 직전 본문 = `git show 3c3a1e1:supervisorSnapshot.md`.
 
 ---
 
 ## 1. 현재 상태 한 줄
 
-main HEAD `943ab23`. 워킹트리: **Cycle 2 Phase A 미커밋** (병렬 supervisor 세션이 작업 후 검수 대기). origin 동기화. plans/CYCLE2-design-integration.md가 진입 plan.
+main HEAD `3c3a1e1` (이후 본 압축 commit). origin 동기화. **Cycle 2 Phase A 머지 완료** (`3f3b6b0`, +1627줄, 13 파일, dead-code on main). 진입 plan: `plans/CYCLE2-design-integration.md`. 다음 액션 = Phase B 위임 (BackEnd Infra) 또는 라이브 회귀.
 
 ---
 
@@ -45,58 +47,45 @@ main HEAD `943ab23`. 워킹트리: **Cycle 2 Phase A 미커밋** (병렬 supervi
 
 | Phase | 위임 | 상태 |
 |---|---|---|
-| **A. supervisor 직접 (design/)** — types + 5 신블록 + ReportContainer 디스패치 + ReportProposalCard + severity 토큰 | 본 세션 | ✅ **정합 통과, 미커밋** (병렬 세션 작업, +600줄, 6 modified + 7 new) |
-| **B. BackEnd Infra 위임** — Pydantic 미러 + system.md + rules + build_view 매핑 + report_generate sub_agent + storage + /api/reports + report_proposed SSE | 별도 세션 | 미시작 (A 머지 후 진입) |
-| **C. Front/View 위임** — ReportArchivePage + useReportArchive + useReportProposal + App.tsx 라우팅 | 별도 세션 | 미시작 (B 머지 후 진입) |
+| **A. supervisor 직접 (design/)** | 병렬 세션 처리 | ✅ 머지 완료 (`3f3b6b0`) |
+| **B. BackEnd Infra 위임** — Pydantic 미러 + build_schema/system.md + rules + build_view 매핑 + report_generate sub_agent + storage + /api/reports + report_proposed SSE | 별도 세션 | 다음 액션 — 위임 명세 출력 후 BackEnd Infra cold-start |
+| **C. Front/View 위임** — ReportArchivePage + useReportArchive + useReportProposal + App.tsx 라우팅 | 별도 세션 | B 머지 후 진입 |
 
-### Phase A 정합 점검 결과 (2026-04-30)
+### Phase A 정합 점검 결과 박제
 
-병렬 세션이 plan 정확히 실행. tsc exit 0. plan 명시 10건 + sensible extras 3건 (`_atoms.tsx` shared helpers / `view.ts` ViewBlockComponent enum / `VizPanel.tsx` VIZ_MAP exhaustiveness for new VizHint).
-
-박제할 결정:
+- plan 10건 정확 실행 + extras 3건 (`_atoms.tsx` shared helpers / `view.ts` ViewBlockComponent enum / `VizPanel.tsx` VIZ_MAP exhaustiveness for new VizHint)
 - `bubble_breakdown.bubble.{size,x,color}` = data_ref 컬럼명 string (LLM 추론 부담 ↓)
-- `kpi_grid.metrics: KpiMetric[]` 인라인 배열 (data_ref 미사용)
-- `ranked_list` + `bubble_breakdown` + chart-with-gantt/radar는 block + dataRef props
-- `ReportProposalCard`는 props-only — SSE/POST wiring은 Phase C
-- VizPanel `VIZ_MAP[gantt]` / `VIZ_MAP[radar]` = ChartBarViz fallback (실 라우팅은 ReportContainer 레벨, entry는 type guard용)
-
-### 다음 액션 (이 세션이 진입 가능)
-
-1. Phase A commit + push (+600줄 atomic feature 단일 commit OK)
-2. plans/CYCLE2-design-integration.md Phase A "✅ DONE" 박제
-3. Phase B 위임 명세 출력 (사용자가 backend-infra 세션에 paste)
+- `kpi_grid.metrics: KpiMetric[]` 인라인 (data_ref 미사용)
+- `ranked_list / bubble_breakdown / chart-gantt / chart-radar` = block + dataRef props
+- `ReportProposalCard` = props-only (SSE/POST wiring은 Phase C)
+- `VIZ_MAP[gantt|radar]` = ChartBarViz fallback (실 라우팅은 ReportContainer, entry는 `Record<VizHint,_>` exhaustiveness용)
+- 신블록 5종 = main에 dead-code (LLM이 신블록 emit 안 하므로 실 영향 0). Phase B가 ReportSchema 신 union을 emit + Phase C가 ReportArchivePage wiring하면 활성화.
 
 ---
 
 ## 4. 직전 사이클 박제 (2026-04-30)
 
-### Cycle 1 — `build_report` → `build_schema` 리네임 (4 commits + 머지)
+본 sect는 **결정 박제소**. commit 단위 변경 내역은 `git log --oneline 4dc8d9e..3f3b6b0` 회수.
 
-명칭 정확화 — sub_agent의 실제 역할은 ReportSchema 생성 (view 전처리). `report_generate` 신설 예정 (Cycle 2 Phase B).
+### Cycle 1 — `build_report` → `build_schema` 리네임
+범위: backend rename + frontend mechanical sync + docs sync. 4 commits (`4dc8d9e..2c1c15d`).
 
-- `4dc8d9e` rename(tool) — agent/backend-infra: 14 파일 / +39 / -39. git mv + 클래스 + SKILL.md + main + loop + system_base + rules
-- `c5c2f07` merge(cycle-1) — supervisor `--no-ff` 머지
-- `218ff67` rename(frontend-sync) — useAgentStream `event.tool === "build_schema"` + SubAgentProgress 한글 라벨 키 + 주석 3건
-- `2c1c15d` docs(rename-sync) — SPEC/ARCHITECTURE/ROADMAP/HANDOFF/agent-prompts 일괄 치환 + ROADMAP 상단 Cycle 1 close + SPEC §11 BUILD_REPORT_MAX_* 미갱신 인라인 주석
+- 명칭 정확화 — sub_agent의 실제 역할은 ReportSchema 생성 (view 전처리). `report_generate` 신설 예정 (Cycle 2 Phase B).
+- 보존: `ReportSchema` 자료구조명 + `build_view` 명칭 + historical 박제 (`supervisorSnapshot/error-case/plans/* / debugHotfixerSnapshot / reports/error-analysis`).
+- 미갱신: `BUILD_REPORT_MAX_*` 환경변수명 — 별도 정리 사이클 후보 (Phase 12 묶음).
 
-미갱신: `BUILD_REPORT_MAX_*` 환경변수명 (별도 사이클). historical 박제 (snapshot/error-case/plans/* 등) 미수정.
+### UI 폴리시 7 hotfix
+범위: 사용자 시각 회귀하면서 발견한 디자인/UX 폴리시. 7 commits (`ece5965..3d71549`).
 
-### UI 폴리시 7 hotfix — 자율 push 권한 발효
+- **자율 hotfix push 권한 발효** — 메모리 [feedback_autonomous_hotfix.md](file:///C:/Users/chanios127/.claude/projects/C--ParkwooDevProjects-LosszeroDEMO/memory/feedback_autonomous_hotfix.md). 작은 수정(파일 1~3 / +50줄 미만 / 단일 관심사) → 즉시 commit+push+사후보고.
 
-메모리 [feedback_autonomous_hotfix.md](file:///C:/Users/chanios127/.claude/projects/C--ParkwooDevProjects-LosszeroDEMO/memory/feedback_autonomous_hotfix.md). 작은 수정(파일 1~3 / +50줄 미만 / 단일 관심사) → 즉시 commit+push+사후보고.
-
-- `ece5965` polish(design): dark bg lightness +0.04 (4 tokens) + `.prose code/pre` 보강
-- `87592f1` polish(framework+design): 대화 목록 자동 정렬 off (useConversationStore 순서 유지 + ConversationList sort 제거)
-- `cba0fc4` polish(design): db_query Executed SQL `<details>` 토글 (tool_start.input.sql turn+tool key map pairing)
-- `f496fe0` polish(design): `.prose h1~h6` `--text-strong` 표준
-- `6c7e9be` hotfix(design): VizDebugInfo 제거 + Executed SQL → 항상 visible 코드 블록 + Copy 버튼
-- `74ab847` hotfix(framework): `useQuickPrompts` hook 신설 (localStorage v1 + per-domain DEFAULTS) + groupware 신 프리셋 3종
-- `567c508` + `3d71549` hotfix(design+framework): ConversationList streaming `Dot(tone="brand")` 점등 (currently selected만 — 멀티 백그라운드는 SessionManager 리팩토링 후속)
-
-박제된 결정:
-- VizDebugInfo dead Tweaks toggle / `.viz-debug` CSS는 dead-but-harmless (별도 정리)
-- streaming indicator는 currently selected 한정 (useAgentStream 단일 hook 한계)
-- CRUD UI는 별도 사이클 — useQuickPrompts 데이터 shape ready
+박제된 결정 + 한계:
+- VizDebugInfo 제거 — 디버그 정보 일반 사용자 노출 X. **dead-but-harmless 잔존**: Tweaks `data-debug-viz` toggle + `.viz-debug` CSS class (별도 정리 사이클 후보).
+- Executed SQL = 항상 visible 코드 블록 + Copy 버튼 (`tool_start.input.sql` turn+tool key map pairing).
+- 대화 목록 자동 정렬 off — `useConversationStore.updateConversation` 순서 유지 + `ConversationList.filtered` sort 제거. 그룹화(today/yesterday/earlier)는 그대로.
+- `useQuickPrompts` hook 신설 — `localStorage v1` + per-domain DEFAULTS. groupware 신 프리셋 3종. **CRUD UI는 별도 사이클** — 데이터 shape + 영속화는 ready.
+- streaming indicator: `Dot(tone="brand")` 점등 (currently selected 대화만). **한계**: useAgentStream 단일 hook 구조라 멀티 백그라운드 stream 추적 불가 — SessionManager 리팩토링(Phase 12) 후속.
+- CSS 보강: dark bg lightness +0.04 (4 tokens) / `.prose code` brand-cyan → text-strong / `.prose pre` 신규 / `.prose h1~h6` `--text-strong` 표준.
 
 ---
 
@@ -118,43 +107,29 @@ main HEAD `943ab23`. 워킹트리: **Cycle 2 Phase A 미커밋** (병렬 supervi
 
 ---
 
-## 6. Phase 6.5 ~ 11 historical archive (압축)
+## 6. Phase 6.5 ~ 11 historical archive
 
-세부 본문은 `git show 943ab23:supervisorSnapshot.md` 회수. 핵심 결정만 인용.
+본 sect는 **포인터 위주**. phase별 본문 + 결정 + 미완 항목은 ROADMAP `§"✅ Phase X 처리됨"`이 진실 소스. 본 snapshot 이전 본문은 `git show 943ab23:supervisorSnapshot.md` 회수 (§1~§17 전체).
 
-### Phase 6.5 (2026-04-28) — 협업 인프라
-HANDOFF.md / `agent-prompts/` 5역할 + per-agent feature 브랜치(`agent/<role>`) + Debug A+C 가드레일 + Claude Design 재주입 패키지 규격.
+| Phase | 키워드 | 본문 회수 |
+|---|---|---|
+| 6.5 | 협업 인프라 — HANDOFF + agent-prompts 5역할 + per-agent worktree + Debug A+C 가드레일 + Claude Design 재주입 규격 | ROADMAP `✅ Phase 6.5` |
+| 7 | 도메인 폴더 + joins 1급화 + parser.build_select | ROADMAP `✅ Phase 7` |
+| 8 | joins 스키마 압축 (4 키→2 키) + dbo prefix 자동 + groupware 22 joins | ROADMAP `✅ Phase 8` |
+| 9 | Deep Agent Loop — sub-agent pipeline (build_schema + build_view) + ReportSchema/ViewBundle 잠금 + SSE subagent_* + _session_domains sticky (Fix 1) | ROADMAP `✅ Phase 9` + §2 Locks |
+| 10 | SKILL Architecture — prompts/rules + sub-agent system.md 외부화(Step 1+2) + loader.py + SKILL.md 표준(Step 3). 새 도구 = 디렉토리 1개 | ROADMAP `✅ Phase 10` + §2 Locks |
+| 11 | LLMProvider 가변화 — keyword-only options + claude max_retries=0 + lm_studio httpx.Timeout per-phase + /api/defaults + SSE heartbeat + TweaksPanel LLM 섹션 + F7 guard | ROADMAP `✅ Phase 11` + §2 Locks |
 
-### Phase 7 (2026-04-29) — 도메인 폴더 + joins 1급화
-`<name>/{meta,tables,joins,stored_procedures}.json` + top-level joins (composite + operators). `domains/parser.py:build_select()` SQL 자동 재조립.
-
-### Phase 8 (2026-04-29) — joins 스키마 압축
-키 4개 → 2개 (`tables`/`columns`). dbo prefix 자동 prepend. groupware 22 joins.
-
-### Phase 9 (2026-04-29) — Deep Agent Loop / Report Pipeline
-3-stage sub-agent (`build_schema`(원래 build_report) + `build_view`) + ReportSchema → ViewBundle → ReportContainer chain. SSE `subagent_*` 이벤트. `_session_domains` sticky (Fix 1). 메시지 메타데이터 localStorage 영속화. 본 phase에서 §8 lock 표 박제.
-
-### Phase 10 (2026-04-30) — SKILL Architecture
-- Step 1+2 (`8366824`/`ffababa`): `prompts/rules/` 5 신설 + sub-agent system.md 외부화 + db_query 한글 가드 fix
-- Step 3 (`f9c1e39`): `prompts/loader.py` (frontmatter parser) + 5 도구 SKILL.md 표준 + `Tool.description` ABC default + system_base.md 다이어트
-- 결과: error-case 구조적 테마 1·2·3·5 root 해소. 새 도구 추가 = 디렉토리 1개로 끝.
-
-### Phase 11 (2026-04-30) — build_schema 안정화 + Provider 가변화
-- Backend (`7a45c17`): `LLMProvider.complete` keyword-only (max_tokens/thinking_*) + claude `max_retries=0` + lm_studio `httpx.Timeout` per-phase + `_truncate_data_results` (BUILD_REPORT_MAX_CELL_CHARS=200, MAX_ROWS=30) + `/api/defaults` + SSE 15s heartbeat
-- Frontend (`4a529d1`): TweaksPanel "LLM" 섹션 + Slider primitive + `useServerDefaults` + AssistantBubble F7 null guard + vite SSE-safe proxy
-
-### 처리 완료 (이전 supervisor 세션 §17 위임 → 본 세션이 처리)
-SPEC §1·§4·§6·§7·§10 갱신 + ARCHITECTURE 합성 흐름 + ROADMAP Phase 7~11 close + agent-prompts SKILL 표준 — 전부 fe8fc05/b902817/6ea27d6/28de340으로 머지. 더이상 미완 X.
+이전 supervisor 세션 §17 위임(SPEC/ARCHITECTURE/ROADMAP/agent-prompts 일괄 갱신) — `fe8fc05`/`b902817`/`6ea27d6`/`28de340`로 머지 완료, 미완 0.
 
 ---
 
 ## 7. 다음 세션 큐
 
-### 즉시 (사용자 환경 의존)
+### 즉시
 
-- **라이브 통합 회귀** — Cycle 1 + 폴리시 7 + Phase A 모두 main 안착 후. 본 회귀 시나리오 ("직원별 최근 업무 일지... 시각화") chain. 통과 시 error-case D6/D5/D1/A6/F7 → 🟢 일괄 진입 가능
-- **Phase A commit + push** (본 세션 가능)
-- **Phase B 위임 명세 출력** (BackEnd Infra cold-start)
+- **Phase B 위임 명세 출력** — `plans/CYCLE2-design-integration.md` §"Phase B" 본문 → BackEnd Infra cold-start.
+- **라이브 통합 회귀 (사용자 환경)** — 시나리오 "직원별 최근 업무 일지... 시각화" chain. 통과 시 error-case `D6/D5/D1/A6/F7` → 🟢 일괄 진입.
 
 ### 단기 (Cycle 2 종료 후 P0 잔재)
 
@@ -201,6 +176,22 @@ cold-start 첫 진입 시:
 
 ---
 
-## 9. 본 snapshot 갱신 이력
+## 9. 본 snapshot 갱신 이력 + 후속 supervisor 압축 가이드
 
-- **2026-04-30**: 압축 (820 → ~250줄). Phase 6.5~11 historical 1 섹션으로 응축. §17 위임 처리완료 1줄. §18~§20 + Phase A complete 보존. 원본 본문은 git `943ab23:supervisorSnapshot.md`에 영구.
+### 갱신 이력
+- **2026-04-30 (1차)**: 820 → ~250줄. §1~§17(Phase 6.5~11 historical) → §6 1 섹션. §18~§20 + Phase A 보존. 본문 회수 = `git show 943ab23:supervisorSnapshot.md`.
+- **2026-04-30 (2차)**: ~250 → ~190줄. §4(직전 사이클) commit log → 결정 박제로 추상화. §6(historical) → ROADMAP `✅ Phase X` 포인터 표로 응축. §3 Phase A 머지 반영. 본문 회수 = `git show 3c3a1e1:supervisorSnapshot.md`.
+
+### 후속 supervisor 압축 가이드 (사용자 운영 정책)
+
+진행 중 사이클이 종료되면 다음 supervisor 세션이 본 snapshot을 추가 보강:
+
+1. **§3 진행 중 사이클 → §6 historical로 강등**: 결정 박제(잠금 갱신 / lock 만료 / 제약 후속) 추출하여 §2 Locks Registry에 흡수. phase 본문은 1줄로 응축, ROADMAP `✅ Phase X` 포인터로 위임.
+2. **§4 직전 사이클 → §6 historical로 강등**: §6 표에 새 행 추가 + 결정 박제만 유지.
+3. **§5 Cycle N 산출물 → 사이클 종료 시 삭제**: 산출물 인용은 `design-export/` (로컬) 또는 git에 박제됨. snapshot에 산출물 inventory 보존 가치 X.
+4. **§7 다음 세션 큐 → 갱신**: 처리 완료 항목 제거 / 신규 항목 추가.
+5. **§2 Locks Registry → 잠금 만료 검토**: 9.x 만료 / 10.x 만료 등 phase boundary에서 잠금 해제.
+
+**원칙**: snapshot은 결정 박제소 + active operational context만. 완료된 phase / commit log / 산출물 inventory는 ROADMAP / git / `design-export/`가 진실 소스.
+
+본 압축 직전 본문 = `git show <prev>:supervisorSnapshot.md` 회수 가능 (위 갱신 이력의 hash 인용).
