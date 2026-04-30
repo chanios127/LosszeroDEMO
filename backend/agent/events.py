@@ -4,7 +4,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventType(str, Enum):
@@ -17,9 +17,15 @@ class EventType(str, Enum):
     SUBAGENT_START = "subagent_start"
     SUBAGENT_PROGRESS = "subagent_progress"
     SUBAGENT_COMPLETE = "subagent_complete"
+    REPORT_PROPOSED = "report_proposed"
 
 
-VizHint = Literal["bar_chart", "line_chart", "pie_chart", "table", "number"]
+# Cycle 2 Phase B — extended to 7 viz hints. gantt/radar are routed by
+# build_view to dedicated GanttBlock/RadarBlock components on the frontend.
+VizHint = Literal[
+    "bar_chart", "line_chart", "pie_chart", "table", "number",
+    "gantt", "radar",
+]
 
 
 class ToolStartEvent(BaseModel):
@@ -78,8 +84,31 @@ class SubAgentCompleteEvent(BaseModel):
     output_summary: str
 
 
+# Cycle 2 Phase B — HITL "save report?" proposal emitted after a build_schema +
+# report_generate chain. The schema field is the full ReportSchema dict (not
+# typed here to avoid circular import with tools/build_schema/schema.py); the
+# proposal sits in main.py's _report_proposals[id_temp] until the user confirms
+# (POST /api/reports/confirm/{id_temp}) or rejects (DELETE /api/reports/proposal/{id_temp}).
+class ReportProposedMeta(BaseModel):
+    blocks: int
+    dataRefs: int
+    domain: str
+    schemaVersion: str
+
+
+class ReportProposedEvent(BaseModel):
+    type: Literal[EventType.REPORT_PROPOSED] = EventType.REPORT_PROPOSED
+    id_temp: str
+    meta: ReportProposedMeta
+    schema_: dict[str, Any] = Field(alias="schema")
+    summary: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 AgentEvent = (
     ToolStartEvent | ToolResultEvent | LLMChunkEvent | FinalEvent
     | ErrorEvent | ContinuePromptEvent
     | SubAgentStartEvent | SubAgentProgressEvent | SubAgentCompleteEvent
+    | ReportProposedEvent
 )

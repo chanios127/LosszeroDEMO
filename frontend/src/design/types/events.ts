@@ -1,5 +1,7 @@
 // Mirror of backend agent/events.py
 
+import type { ReportSchema } from "./report";
+
 export type VizHint =
   | "bar_chart"
   | "line_chart"
@@ -65,6 +67,24 @@ export interface SubAgentCompleteEvent {
   output_summary: string;
 }
 
+// Cycle 2 Phase B — HITL "save report?" proposal. Backend wires this up after
+// a build_schema + report_generate chain. Frontend renders ReportProposalCard
+// + posts to /api/reports/confirm/{id_temp} or DELETE /api/reports/proposal/{id_temp}.
+export interface ReportProposedMeta {
+  blocks: number;
+  dataRefs: number;
+  domain: string;
+  schemaVersion: string;
+}
+
+export interface ReportProposedEvent {
+  type: "report_proposed";
+  id_temp: string;
+  meta: ReportProposedMeta;
+  schema: ReportSchema;
+  summary: string;
+}
+
 // LOCKED: AgentEvent union and *Event classes mirror backend agent/events.py.
 // Modify only when backend SSE event schema changes; chat domain types live in chat.ts.
 export type AgentEvent =
@@ -76,4 +96,5 @@ export type AgentEvent =
   | ContinuePromptEvent
   | SubAgentStartEvent
   | SubAgentProgressEvent
-  | SubAgentCompleteEvent;
+  | SubAgentCompleteEvent
+  | ReportProposedEvent;
