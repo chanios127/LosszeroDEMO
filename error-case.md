@@ -345,7 +345,7 @@ FROM dbo.TGW_TaskDailyLog td
 **해결**: `## Result size` 섹션 신설 + 1000행 hard cap 명시. plan Fix-E.
 **우선순위**: 🔴 P0
 
-### E2. 🟠 build_report description.md block 필수 필드 표 부재
+### E2. 🟢 build_report description.md block 필수 필드 표 부재 — Phase 10 Step 3 SKILL.md `## Rules` + system.md hardening
 **위치**: `backend/tools/build_report/description.md`
 **증상**: D1 직접 원인
 **해결**: plan Fix-F.
@@ -462,7 +462,7 @@ FROM dbo.TGW_TaskDailyLog td
 **관찰 항목**: backend 로그 끝까지(turn N final 또는 ERROR) + frontend SSE 마지막 event type
 **우선순위**: 🟠 (본 화면이 영구 stall로 끝나면 🔴, 단순 지연이면 ⚪로 강등)
 
-### F7. ⚪ Reasoning 모델에서 도구 호출 전 빈 `💬` 메시지 전송 → 빈 assistant bubble
+### F7. 🟠 Reasoning 모델에서 도구 호출 전 빈 `💬` 메시지 전송 → 빈 assistant bubble — Phase 11 Frontend AssistantBubble null guard 적용 (라이브 검증 대기)
 **발생 시점**: 2026-04-30 — reasoning 모델(`qwen3.5-27b`) 사용 시 관찰
 **증상**: 백엔드 터미널에서 `🧠 [THINK]` 다음 `💬 ` (내용 없이 개행만) 출력. 도구 호출 전 LLM text output이 빈 문자열 또는 whitespace만.
 **위치**: `backend/agent/loop.py` text_delta emit → frontend AssistantBubble
@@ -640,6 +640,8 @@ LLM이 처리 중일 때(특히 reasoning 모델의 chain-of-thought 단계, 30~
 - **2026-04-30 (#9)**: reasoning 모델(`qwen3.5-27b-reasoning-distilled` 등) 전환 후 회귀 로그 분석. **D7 fix 정상 작동 확인** (T1 SQL 200행 쿼리 통과 — 백엔드 재시작 확인, system_len 15797로 Phase 10 rules/ 로드 확인). **D9 🔴 → 🟠**: reasoning 모델이 `<think>` 블록 격리 작동 — 중간 추론 user-visible 문제 대폭 개선. **A3 🔵 → 🔴 격상**: reasoning 모델의 thinking 단계(chain-of-thought)가 120s 초과 → 200행 소규모 쿼리에서도 트리거. 즉시 fix 없이는 모든 분석 쿼리 차단 수준. **F7 신규 관찰 추가**: reasoning 모델에서 도구 호출 전 `💬` (빈 string) 전송 → 빈 assistant bubble 렌더 가능성.
 - **2026-04-30 (#10)**: "프론트에서 요청 대기 시간이 굉장히 짧은거 같다" 관찰 분석. `backend/main.py:559-576` event_generator + `vite.config.ts` 코드 검토. **G7 신설**: SSE heartbeat 없음 → LLM reasoning 무음 구간(30~120s+)에서 연결 종료 위험. **A3 + G7 반드시 묶음 fix** — httpx timeout 연장(A3)만 하면 무음 구간이 더 길어져 G7이 악화됨.
 - **2026-04-30 (#11)**: Phase 11 Backend 사이클 머지 완료 (`464d74d` + `f2ac33a` + `8d11067` + `61d0e9c` + `aaaef43` + merge `7a45c17`). **🟢 처리완료**: A3 (httpx timeout 환경변수화), G7 (SSE heartbeat 15s), C2 (build_report input cap). **🟠 부분처리** (라이브 회귀 대기): D6 (max_tokens 가변 + cap), D5 (block enum strict), D1 (highlight.message), A6 (SDK max_retries=0로 폭주만 차단, agent-level backoff 별도). **잔재 P0**: B4 (circuit breaker), C1 (db_query 코드 cap), B1·B2·B3 (tool input validation), 그리고 frontend 영역 — B-6 (TweaksPanel UI), F7 (빈 💬 검증), vite.config.ts SSE proxy 보강은 Front/View 위임으로 별도. Phase 12 후보: main.py 3-split + LLM helper 추출 (외부 진단 박제 — supervisorSnapshot.md §11 참조).
+- **2026-04-30 (#12)**: Phase 11 Frontend (B-6) 머지 완료 (`a2ca3b4` + `eb03c01` + `c7830ef` + `daf513b` + `323a9b6` + merge `4a529d1`). **🟠 부분처리**: F7 (AssistantBubble 정밀 null guard 적용, 라이브 검증 대기). 사용자 환경에서 max_tokens slider + thinking toggle UI 노출 + reasoning 모델 도구 호출 직전 빈 bubble 미표시 검증 시 🟢. Phase 11 + Step 3 머지 완료된 시점에 통합 회귀 권장 (D6/D5/D1/A6/F7 일괄 검증).
+- **2026-04-30 (#13)**: Phase 10 Step 3 머지 완료 (`bb4bcc3` + `ad92719` + `c899aef` + `5fcf13a` + `2705913` + merge `f9c1e39`). **구조적 테마 🟢 일괄 처리**: Theme 1 (프롬프트 파편화 — rules/ + SKILL.md + loader 자동 합성), Theme 2 (sub-agent 인라인 — system.md 외부화 + loader.get_subagent_system), Theme 3 (reactive guard ↔ proactive prompt 분리 — SKILL.md `## Rules` + `## Guards` 짝 표준), Theme 5 (미래 SubAgent debt — SKILL.md 표준화로 새 도구 추가 디렉토리 1개로 끝). **🟢 추가**: E2 (build_report description.md block 필수 필드 — SKILL.md `## Rules` + system.md hardening). **Theme 4 (가드 메시지가 회복 단서)** 는 SKILL.md `## Errors` 섹션 표준 도입으로 framework 마련됨, individual error 메시지 갱신은 case-by-case로 별도 사이클. system_total_len 12087 chars baseline 측정.
 
 ## 신규 케이스 추가 가이드
 

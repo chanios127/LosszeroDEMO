@@ -1,8 +1,9 @@
 # Supervisor 세션 인수인계 (HANDOFF)
 
-> 최종 갱신: 2026-04-28 (Phase 6.5 — 협업 인프라 정착 시점)
+> 최종 갱신: 2026-04-30 (Phase 11 + Phase 10 Step 3 종료 시점)
 > 본문을 새 Claude Code 세션의 첫 입력으로 그대로 복사해 supervisor 세션을 시작.
-> 이전 세션 내역은 git 히스토리 + `SPEC.md` / `ARCHITECTURE.md` / `ROADMAP.md` + `agent-prompts/` 가 진실 소스.
+> 이전 세션 내역은 git 히스토리 + `SPEC.md` / `ARCHITECTURE.md` / `ROADMAP.md` + `supervisorSnapshot.md` + `error-case.md` + `agent-prompts/` 가 진실 소스.
+> **본 갱신 시점에 SPEC / ARCHITECTURE / ROADMAP / agent-prompts/* 갱신은 미완** — supervisorSnapshot.md §17 위임 항목 인용. 새 supervisor 세션이 첫 사이클로 처리 권장.
 
 ---
 
@@ -37,34 +38,89 @@
 ---
 
 ### 시작 시 필수 읽기 (이 순서)
-1. `SPEC.md` — 시스템 전체 명세 (디렉토리, API, SSE 이벤트, 도구, 도메인)
-2. `ARCHITECTURE.md` — 데이터 흐름, 디자인 결정, 디자인 시스템
-3. `ROADMAP.md` — 미이행 작업, 알려진 이슈, 기술 부채
-4. `agent-prompts/README.md` — 에이전트 위임 워크플로우 + per-agent 브랜치 운영 규칙
-5. `git log --oneline -15` — 최근 작업 흐름 파악
+1. **`supervisorSnapshot.md`** — 직전 세션의 일시 상태 + Phase별 close 박제(§7~§17). 가장 최신 컨텍스트.
+2. **`error-case.md`** — 카테고리화된 에러 케이스 카탈로그 (8 카테고리 / 30+ 케이스 / 구조적 테마 5종). 잔재 P0 인용.
+3. `SPEC.md` — 시스템 전체 명세 (디렉토리, API, SSE 이벤트, 도구, 도메인). **본 시점 Phase 7~11 갱신 미완** (snapshot §17 위임 항목)
+4. `ARCHITECTURE.md` — 데이터 흐름, 디자인 결정. 동상 갱신 미완
+5. `ROADMAP.md` — 미이행 작업. 동상 갱신 미완
+6. `agent-prompts/README.md` — 에이전트 위임 워크플로우 + per-agent 브랜치 운영 규칙
+7. `plans/` — 진행 중·박제 plan (`PHASE10-skill-architecture.md`, `PHASE12-main-split.md` 등)
+8. `git log --oneline -20` — 최근 작업 흐름 파악
 
 ---
 
-### 현재 프로젝트 상태 (Phase 6.5 종료 시점 기준)
+### 현재 프로젝트 상태 (Phase 11 + Phase 10 Step 3 종료 시점, main HEAD `f9c1e39`)
 
-#### 완료
+#### 완료 (Phase 6.5 ~ Phase 11)
+
+**Phase 6.5 (협업 인프라, 2026-04-28)**:
+- HANDOFF.md / `agent-prompts/` / per-agent 브랜치 / 가드레일 / Claude Design 재주입 패키지 규격
+
+**Phase 7 (이전 단계 base)**:
 - AgentLoop + SSE 스트리밍 + continue_prompt (HITL)
 - Claude / LM Studio 듀얼 프로바이더 (Harmony 마커 정규화)
-- 도메인 레지스트리 (`backend/schema_registry/domains/*.json`) — groupware 등록
+- 도메인 레지스트리 (`backend/schema_registry/domains/*.json`)
 - 프론트엔드 4페이지: Dashboard / DataQuery / AgentChat / UIBuilder
-- 대화 영속화 (localStorage), tool_result 인라인 차트
-- design / framework 분리 + OKLCH 디자인 토큰 + TweaksPanel
-- Tools 패키지화 (description.md 외부화), 시스템 프롬프트 외부화
-- **(Phase 6.5)** 협업 인프라: HANDOFF.md / `agent-prompts/` / per-agent 브랜치 / 가드레일 / Claude Design 재주입 패키지 규격
+- 대화 영속화, tool_result 인라인 차트
+- design / framework 분리 + OKLCH 디자인 토큰
 
-#### 알려진 미완성 / 후보 작업 (자세한 내용은 `ROADMAP.md` 참조)
-- 데이터 조작 (db_write 도구) + HITL 재도입
-- Domain UI (전통 CRUD 페이지)
-- 세션 영속화 (메모리 → SQLite/Redis)
-- UI Builder Step 3 (위젯 영속화, 드래그 그리드)
+**Phase 8 (joins schema 가독성, 2026-04-29)**:
+- joins 스키마: 4 키 → 2 키(`tables`/`columns`), dbo prefix 제거
+- groupware joins 22개 (snapshot §7.1 참조)
+- parser/loader 신 스키마 마이그레이션
+- agent-prompts/README에 동시 세션 워크트리 충돌 가드
+
+**Phase 9 (Deep Agent Loop / Report Pipeline, 2026-04-29)**:
+- 3-stage sub-agent pipeline: AgentLoop ⊃ db_query·list_tables·sp_call (SubAgent1) + build_report (SubAgent2) + build_view (SubAgent3)
+- LLM 자율 라우팅, ReportSchema → ViewBundle → 인라인 ReportContainer chain
+- SSE subagent_* 이벤트 + UI multi-stage progress (`SubAgentProgress`)
+- localStorage persistence (메시지 메타데이터에 reportSchema + viewBundle)
+- Debug Fix 1·2·3·4 + 보강 A·B 흡수
+- hotfix(`e2197d1`): `<think>` 블록 strip + SubAgentProgress error UI + 한글 stage 라벨
+
+**Phase 10 SKILL Architecture (2026-04-30)**:
+- **Step 1+2 (`8366824`/`ffababa`)**: `prompts/rules/` 신설 5개 (korean-sql / result-size / error-recovery / report-block-types / json-output) + db_query 한글 가드 fix (D7) + sub-agent system prompt 외부화 (`build_report/system.md` / `build_view/system.md`)
+- **Step 3 (`f9c1e39`)**: `prompts/loader.py` (frontmatter parser + applies_to 라우팅) + 5개 도구에 SKILL.md 표준 + `Tool.description` ABC default + system_base.md 다이어트
+- error-case 구조적 테마 1·2·3·5 root 해소 (Theme 4는 framework 마련, individual case는 별도)
+
+**Phase 11 build_report 안정화 + Provider 가변화 (2026-04-30)**:
+- **Backend (`7a45c17`)**: `LLMProvider.complete` keyword-only 옵션 확장 (max_tokens / thinking_*) + claude max_retries=0 + lm_studio httpx.Timeout per-phase 환경변수화 + AgentLoop sub-agent 옵션 propagate + build_report `_truncate_data_results` + `/api/defaults` endpoint + SSE event_generator heartbeat 15s
+- **Frontend (`4a529d1`)**: TweaksPanel "LLM" 섹션 (Slider + Thinking Toggle + budget) + Slider primitive + useServerDefaults hook + useTweaks 확장 + AssistantBubble F7 null guard + vite SSE-safe proxy
+
+**부수 인프라 (이 사이클들 사이)**:
+- diag(observability) — provider 예외 catch broader + provider-aware startup banner (G4/G5)
+- debug-hotfixer 세션 표준 (`debugHotfixerSnapshot.md`) — error 분석 sub-supervisor
+
+#### 알려진 미완성 / 후보 작업 (자세한 내용은 `supervisorSnapshot.md` §16 + `error-case.md` 잔재 + `plans/` 참조)
+
+**P0 잔재** (별도 사이클):
+- B4 — AgentLoop circuit breaker (동일 에러 N회 abort)
+- C1 — db_query 코드-level 1000행 cap
+- B1·B2·B3 — tool input validation + error wrapping
+- D2 — 영문 컬럼 환각 (도메인 schema 화이트리스트, 보강 C)
+
+**Phase 12 후보** (사전 plan 박제됨 — `plans/PHASE12-main-split.md`):
+- main.py 638줄 3-split (`app.py` + `session.py` + `orchestration.py`)
+- LLM helper 추출 (build_report/build_view 중복 ~80줄 → `llm/helpers.py:call_llm_for_json`)
+
+**중기 (Phase 12 후)**:
+- Phase 10 Step 4 — `backend/agents/` 디렉토리 + SubAgent 카탈로그 README
+- HITL 게이트 (provider별 분기, build_report 출력 직후 검수)
+- ReportSchema 점진 블록 (`table` / `comparison` / `kpi_grid`)
+- View 카탈로그 확장 (`TimeSeriesPanel` / `HeatmapCalendar`)
+- SubAgent 카탈로그화 (`comparison_agent` / `anomaly_detector`)
+
+**장기 / 운영**:
+- 세션 영속화 마이그레이션 (in-memory `_conversations` → SQLite/Redis)
+- Sonnet 다운그레이드 정식 적용 (9.6 파일럿 평가 기반)
 - 도메인 추가 (MES production 등)
 - 토큰 카운트 기반 히스토리 트리밍
 - 임베딩 기반 도메인 매칭
+
+**라이브 검증 대기** (사용자 환경):
+- Phase 11 통합 회귀 — TweaksPanel UI + max_tokens 12000 + thinking ON으로 본 회귀 시나리오 ("직원별 최근 업무 일지... 시각화") chain 끝까지
+- AS현안 4턴 통합 회귀 — Phase 9 close 시점부터 미실행
+- F7 라이브 검증 — reasoning 모델 환경에서 빈 assistant bubble 미표시
 
 ---
 
@@ -114,6 +170,57 @@
 | "디자인 토큰/테마 추가" | supervisor가 `design-export/` 패키지 생성 → Claude Design에 위임 → 결과 통합 |
 | "버그 수정" | Debug 세션 (가드레일 평가 → 자율 C 또는 supervisor 정제 A) |
 | "구조 리팩토링" | 사전 합의 → 영향 영역 에이전트 위임 → supervisor 통합/문서 갱신 |
+| "새 도구 / sub-agent 추가" | SKILL.md 표준 따라 디렉토리 1개 + SKILL.md 1개 + tool.py로 끝 (아래 §SKILL.md 표준) |
+
+---
+
+### SKILL.md 표준 (Phase 10 Step 3 도입, `f9c1e39`)
+
+**도구·sub-agent·cross-cutting rule이 각자 자기 슬롯에 자산 보유**. `backend/prompts/loader.py`가 startup에 자동 collect하여 system 프롬프트 합성.
+
+#### 디렉토리 구조
+```
+backend/
+  prompts/
+    system_base.md                      # core anti-hallucination + 응답 언어 + name resolution + 시각화 + report pipeline (rules 외)
+    rules/
+      <name>.md                          # cross-cutting rule (frontmatter: applies_to: [system_prompt])
+    loader.py                            # SKILL/rules loader (lru_cache + minimal-regex frontmatter parser)
+  tools/
+    <tool_name>/
+      tool.py
+      SKILL.md                           # frontmatter + Description / Rules / Guards / Errors / (Examples)
+      schema.py                          # (선택)
+      system.md                          # sub_agent type만 — 내부 LLM 호출 시 system 메시지
+```
+
+#### SKILL.md frontmatter
+```yaml
+---
+name: <tool_name>
+type: tool                                # tool | sub_agent | rule
+version: 1
+applies_to:
+  - tool_description                      # OpenAI function calling description
+  - system_prompt_addendum                # 시스템 프롬프트에 도구별 섹션
+required_rules:                           # cross-cutting rule 의존성
+  - korean-sql
+  - result-size
+sub_agent_system: ./system.md             # sub_agent type만
+---
+```
+
+#### 새 도구 추가 워크플로우
+1. `backend/tools/<name>/` 디렉토리 신설
+2. `tool.py` 작성 (Tool ABC 상속, `name` / `input_schema` / `execute` 구현)
+3. `SKILL.md` 작성 (frontmatter + Description / Rules / Guards / Errors)
+4. (sub_agent라면) `system.md` 신설
+5. `main.py`에 도구 등록
+6. **Tool.description override 불필요** — ABC default가 `loader.get_tool_description(self.name)` 자동 호출
+7. **시스템 프롬프트 직접 read 불필요** — `loader.build_system_prompt()`가 자동 합성
+
+#### 잠금 영향
+- SKILL.md 표준 자체가 잠금 후보 (snapshot §8 검토 항목). 표준 변경 시 모든 도구 영향.
 
 ---
 
