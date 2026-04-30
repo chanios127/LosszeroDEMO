@@ -13,9 +13,9 @@
 - `backend/main.py` (FastAPI 라우터, 세션 저장소, SSE 엔드포인트)
 - `backend/agent/` (`loop.py` AgentLoop, `events.py` SSE 이벤트 타입)
 - `backend/llm/` (`base.py` 추상, `claude.py`, `lm_studio.py`, `__init__.py` 팩토리)
-- `backend/tools/` (`base.py` Tool ABC, `db_query/`, `list_tables/`, `sp_call/`)
+- `backend/tools/` (`base.py` Tool ABC + 5 디렉토리: `db_query/`, `list_tables/`, `sp_call/`, `build_report/`, `build_view/`. 각 디렉토리의 `tool.py` / `SKILL.md` / sub_agent의 `system.md` + `schema.py`)
 - `backend/db/connection.py` (PyodbcPool, run_in_executor 래핑)
-- `backend/prompts/` (시스템 프롬프트)
+- `backend/prompts/` (시스템 프롬프트 — `system_base.md` core, `loader.py` 합성기, `rules/<name>.md` cross-cutting rule)
 
 ### 절대 건드리지 말 것
 - `backend/domains/loader.py`, `backend/schema_registry/domains/*.json` — **DB Domain Manager 영역**
@@ -131,20 +131,27 @@ cd ../LosszeroDEMO-backend-infra
 
 다음 변경은 시스템 전반 파급 → **변경 전에 supervisor 핸드오프**:
 
-- **시스템 프롬프트 / LLM instruction 상수** (`backend/prompts/`, `backend/tools/*/description.md`, `backend/llm/lm_studio.py`의 `_FALLBACK_TAG_INSTRUCTION` 같은 provider 내부 LLM instruction)
-- **SSE 이벤트 스키마** (`backend/agent/events.py`) — 변경 시 `frontend/src/design/types/events.ts` 동시 수정 필수, Front/View 세션 협조 필요
-- **공용 인터페이스 시그니처**: `LLMProvider.complete`, `Tool.execute`, `Tool.input_schema`, AgentLoop public 메서드
+- **SKILL.md 표준 자체** (frontmatter 키, applies_to enum, `prompts/loader.py`의 합성 sequence) — 변경 시 모든 도구 영향, supervisor 위임 명세에 명시 필수
+- **시스템 프롬프트 / LLM instruction 상수** (`backend/prompts/system_base.md`, `backend/prompts/rules/*.md`, `backend/tools/*/SKILL.md`, `backend/tools/*/system.md` (sub_agent), `backend/llm/lm_studio.py`의 `_FALLBACK_TAG_INSTRUCTION` 같은 provider 내부 LLM instruction)
+- **SSE 이벤트 스키마** (`backend/agent/events.py` — `subagent_*` 포함 9종) — 변경 시 `frontend/src/design/types/events.ts` 동시 수정 필수, Front/View 세션 협조 필요
+- **공용 인터페이스 시그니처**: `LLMProvider.complete` (max_tokens / thinking_* keyword-only 옵션 포함), `Tool.execute`, `Tool.input_schema`, sub_agent의 `set_llm_options()`, AgentLoop public 메서드
+- **JSON 모델 잠금**: `ReportSchema` / `ViewBundle` (`tools/build_report/schema.py` / `tools/build_view/schema.py`) — Phase 9 sub_agent 입출력 계약, 프론트 ReportContainer와 짝
 - **읽기 전용 가드** (`backend/tools/db_query/`의 DML/DDL 차단 regex) — 우회 금지
 - **DB 풀 / 동시성** (`backend/db/connection.py`)
 - **API 라우터 경로/메소드 변경** — 프론트 hooks 동기화 필수
-- **환경변수 / 시크릿 / 의존성** (`backend/pyproject.toml`)
+- **환경변수 / 시크릿 / 의존성** (`backend/pyproject.toml`, `.env.example`의 `CLAUDE_*`, `LM_STUDIO_*`, `BUILD_REPORT_*`, `SSE_HEARTBEAT_SEC` 등)
 
 ### 5.3 일상 작업 규칙
 
 - pyodbc 동기 호출은 반드시 `asyncio.run_in_executor`로 비동기화
 - 새 라우터 추가 시 SPEC.md §4 갱신 (supervisor에 통보, 본인은 머지 후 supervisor가 일괄 갱신)
-- 새 도구 추가 시 `backend/tools/<name>/{__init__.py, tool.py, description.md}` 패키지 구조 준수
-- 시스템 프롬프트는 `backend/prompts/system_base.md` (lru_cache) — 변경 시 위 5.2 규칙
+- **새 도구 추가** (`agent-prompts/README.md` §"새 도구 추가 워크플로우" 표준):
+  1. `backend/tools/<name>/` 디렉토리 + `tool.py` (Tool ABC 상속, `description` override 불필요 — ABC default가 SKILL.md ## Description 자동 호출)
+  2. `SKILL.md` (frontmatter + Description / Rules / Guards / Errors 섹션)
+  3. (sub_agent라면) `system.md` + frontmatter `sub_agent_system: ./system.md`
+  4. `main.py`에 등록만. 시스템 프롬프트 직접 read 금지 — `loader.build_system_prompt()`가 자동 합성
+  5. **`description.md` 작성 금지** (Phase 10 Step 3에서 폐기)
+- 시스템 프롬프트 자산은 `prompts/loader.py`가 lru_cache로 startup 1회 read — SKILL.md / rules 편집 후 backend 재기동 필요
 - Pydantic Enum 직렬화: SSE의 `event:` 라인은 `.value` 사용 (Enum 자체는 안 됨)
 
 ### 5.4 검증 (커밋 전)

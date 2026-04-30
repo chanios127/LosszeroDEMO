@@ -55,9 +55,9 @@ supervisor의 위임 명세를 받으면 작업 시작 전에 §1 "작업 영역
 3. 본 영역 핵심 파일 점검:
    - `frontend/src/framework/App.tsx`, `main.tsx`
    - `frontend/src/framework/pages/*` (Dashboard, DataQuery, AgentChat, UIBuilder)
-   - `frontend/src/framework/hooks/*` (useAgentStream, useConversationStore, useTweaks)
+   - `frontend/src/framework/hooks/*` (useAgentStream, useConversationStore, useTweaks, useServerDefaults)
    - `frontend/src/framework/components/builder/*`
-   - `frontend/src/design/types/events.ts` — read-only로만 참조 (백엔드 SSE 이벤트 타입)
+   - `frontend/src/design/types/events.ts` — read-only로만 참조 (백엔드 SSE 이벤트 타입, `subagent_*` 포함)
    - `frontend/package.json`
 
 4. **§3 상황보고 markdown 출력** 후 supervisor 추가 지시 대기.
@@ -143,7 +143,8 @@ cd ../LosszeroDEMO-front-view
 - 새 hooks → `frontend/src/framework/hooks/`
 - 새 페이지 → `frontend/src/framework/pages/` + `App.tsx` 라우팅 갱신 + SPEC.md §2 디렉토리 트리 갱신 (supervisor 통보)
 - design/ 컴포넌트 활용은 import만, 본문 수정 금지
-- localStorage 키는 `llm-harness-*` 패턴 (`useConversationStore`의 `llm-harness-conversations` 등)
+- localStorage 키는 `llm-harness-*` 패턴 (`useConversationStore`의 `llm-harness-conversations` 등). `useTweaks`의 `losszero.tweaks.v1` (Phase 11에서 backward-compat 유지 — 신규 필드는 spread default로 자동 채움)
+- **per-request LLM tuning** (Phase 11): `Tweaks` 인터페이스에 `maxTokens` / `thinkingEnabled` / `thinkingBudget` 박제. POST `/api/query` body 확장은 `useAgentStream`의 send 시점에 `readStoredLlmOptions()` util로 localStorage 직접 read (이중 상태 sync 회피). startup에 `useServerDefaults()` hook이 `/api/defaults` fetch + tweaks hydration. `thinking_supported=false` (lm_studio)일 때 thinking 컨트롤 disabled 처리.
 
 ### 5.5 검증 (커밋 전)
 
