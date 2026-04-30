@@ -409,3 +409,93 @@ final (인라인 ReportContainer 또는 일반 답변)
 - **AS현안 4턴 통합 회귀** — Phase 9 close 시점 미실행 박제 (§7 항목 4). 사용자 직접 검증 필요
 - 본 hotfix가 think strip을 해결했지만 다른 reasoning 마커 (`<reasoning>`, `<scratchpad>` 등) 출현 가능 — 발견 시 동일 패턴 적용
 
+---
+
+## 12. Phase 10 SKILL Architecture — Step 1+2 클로즈 (2026-04-30)
+
+직전 supervisor 세션(본 세션)이 multi-turn 회귀(`직원별 최근 업무 일지... 시각화`)에서 **D7 한글 가드 false positive 16턴 trap** 실측. 분석 결과 5 root cause("프롬프트 자산 파편화")로 수렴 → `error-case.md` + `plans/PHASE10-skill-architecture.md` 박제 → backend-infra 위임.
+
+### 마스터 plan
+`plans/PHASE10-skill-architecture.md` — 4-step 마이그레이션. 본 사이클은 Step 1 + Step 2 완료. Step 3 (SKILL.md 표준 + `prompts/loader.py`)와 Step 4 (`agents/` 디렉토리)는 별도 사이클.
+
+### Step 1 — `prompts/rules/` 신설 + D7 가드 fix (commit `8366824`)
+- `backend/prompts/rules/` 신설 5개 — `korean-sql.md`(E7), `result-size.md`(E1), `error-recovery.md`(E6 이전), `report-block-types.md`(D5/D1, Step 2 입력), `json-output.md`(D6, Step 2 입력)
+- `backend/prompts/system_base.md` — `## Korean text in SQL (strict)` + `## Result size` 신설, `## Error recovery` 갱신. 본 단계는 **수동 인용**(SST는 rules/, system_base는 cache·임시 인용). Step 3 loader 도입 시 자동화로 전환.
+- `backend/tools/db_query/tool.py:52-77` — `_assert_no_korean_in_select` 정규식에 single-quoted literal strip 추가 (D7 false-positive 본질 해소). 에러 메시지 갱신: "Korean column or string literal detected outside alias/literal context..."
+
+### Step 2 — Sub-agent system prompt 외부화 (commit `ffababa`)
+- `backend/tools/build_report/system.md` 신설 (2783 chars) — 인라인 본문 + D5(block enum strict) + D1(`highlight.message` REQUIRED) + D6(backslash escape) hardening 흡수. `tool.py`는 `Path(__file__).parent / "system.md"` 로드.
+- `backend/tools/build_view/system.md` 신설 (790 chars) — 보조 LLM 축 추론 프롬프트 외부화 + D6 hardening.
+
+### 머지 (commit `86ed1dd`)
+agent ad-hoc 6 케이스 모두 통과:
+- T1: `CASE WHEN x LIKE '%성수기전%' THEN '고객지원' ... AS [업무분류]` → 통과 (D7 trap 해소 ✅)
+- T2: `SELECT 담당자명 FROM t` (bare Korean) → 거부 ✅
+- T3: alias 다중 (`AS [담당자]`, `AS [거래처]`) → 통과
+- T4: `CASE WHEN 직위 = '사장'` (bare Korean inside CASE) → 거부 (false negative 방지)
+- T5: `WHERE wb_Title LIKE '%성수기%'` → 통과
+- T6: 순수 ASCII control → 통과
+
+import OK (15 routes), `BuildReportTool()` / `BuildViewTool()` 인스턴스 생성 OK.
+
+### error-case.md 상태 갱신
+**🔴 → 🟠 (proactive prompt + reactive guard 짝 fix 완수, 라이브 회귀 대기)**:
+- D7 (한글 가드 false positive 16턴 trap)
+- D7-수반 (가드 메시지가 LLM에 잘못된 진단 주입)
+- E7 (한글 컬럼 사전 금지 규칙 부재)
+- D5 (`metric_group` block type 환각)
+- D6 (build_report invalid JSON escape)
+- D1 (highlight.message 누락)
+- E1 (TOP N 강제 규칙 부재 — prompt only, code cap 미적용 → 잔재)
+
+**자연 해소 후보** (D7 trap 해소 시 종속):
+- D8 (SQL retry degeneration)
+- A2-b (context bloat 빈 응답 — 16턴 trap 후 LLM 포기)
+- C2 (텍스트 본문 raw SELECT — system_base.md `## Result size` 가이드)
+
+**P0 잔재** (별도 사이클 필요):
+- A3 (httpx timeout 환경변수화) — `backend/llm/lm_studio.py`
+- B4 (AgentLoop circuit breaker) — `backend/agent/loop.py`
+- C1 (db_query 코드-level 1000행 cap) — prompt 가이드만으로는 불충분
+- A1 (LM Studio Jinja chat_template — `gemma-4-26b-a4b` 모델 quirk) — 모델 교체 후 재현 검증
+
+### 박제된 결정 / 다음 세션 인용
+
+1. **Single Source of Truth = `prompts/rules/`** — system_base.md는 본 phase 동안 캐시·임시 인용. Step 3 loader 도입 시 인용 부분 제거.
+2. **rules/ 5개 파일 frontmatter 미부여** — Step 3에서 도입. 본 단계는 self-contained markdown.
+3. **Sub-agent system prompt 외부화 패턴** — `<tool>/system.md` + `tool.py`가 startup load. 향후 SubAgent 추가 시 동일 패턴.
+4. **위험 영역 변경 모두 사전 합의됨** — 시스템 프롬프트(`system_base.md`, `system.md` 2종) + 가드 정규식(`_assert_no_korean_in_select`) + sub-agent 인터페이스 비변경(잠금 무위반).
+
+### 다음 세션 후속 (§11 갱신)
+
+**즉시 (사용자 환경 의존)**:
+1. **수동 multi-turn 회귀** — backend 재시작 후 다음 시나리오:
+   - "직원별 최근 업무 일지... 시각화" — D7 trap 미발생 + build_report 정상 chain 확인
+   - AS현안 4턴 시나리오 — Q3에서 한글 string literal 통과 + Fix 1·2·3·4 종합 효과
+2. **회귀 통과 시** — `error-case.md` 🟠 → 🟢 일괄 갱신 + §8 Locks Registry "9.x 종료 시" 만료 항목 해제 진입
+3. **회귀 미통과 시** — debug-hotfixer 세션(별도 cold-start `debugHotfixerSnapshot.md`)에서 deep-dive 분석 → main supervisor가 fix 위임
+
+**단기 (P0 잔재)**:
+4. A3 httpx timeout 환경변수화 (`backend/llm/lm_studio.py:143-146`) — BackEnd Infra 1회 단발
+5. C1 db_query 코드-level row cap (1000) — BackEnd Infra
+6. B4 AgentLoop circuit breaker — `backend/agent/loop.py` 동일 에러 N회 abort
+7. A1 LM Studio 모델 교체 (gemma-4-26b-a4b → Qwen3 / Qwen2.5-Coder / Llama 3.x) — 사용자 환경
+
+**중기 (Phase 10 Step 3)**:
+8. SKILL.md 표준 도입 + `backend/prompts/loader.py` — frontmatter parsing + applies_to 라우팅 + system 프롬프트 자동 합성
+9. `description.md` deprecate (SKILL.md `## Description`이 대체)
+
+**Phase 10 잔재**:
+10. Step 4 — `backend/agents/` 디렉토리 + SubAgent 카탈로그 README
+11. SubAgent 카탈로그화(snapshot §11 중기 #9 — `comparison_agent`, `anomaly_detector` 등) — Step 3·4 완료 후
+
+### 병행 트랙 — debug-hotfixer 세션
+새 supervisor 세션(`debugHotfixerSnapshot.md`)이 error-case.md 분석 + reports/error-analysis/ 작성에 특화. main supervisor / backend-infra와 영역 분리됨. 병행 작업 가능.
+
+### 갱신 필요 문서 (Phase 10 Step 3 완료 시)
+- SPEC.md §7.1 — 시스템 프롬프트 구성 다이어그램에 `prompts/rules/` 추가
+- ROADMAP.md — Phase 10 SKILL Architecture 섹션 신설
+- HANDOFF.md — 새 도구·sub-agent 추가 가이드 (SKILL.md 표준)
+- agent-prompts/README.md — rules/ 영역 권한 가이드
+- supervisorSnapshot.md §8 — SKILL.md 표준을 새 잠금 후보로 검토
+
