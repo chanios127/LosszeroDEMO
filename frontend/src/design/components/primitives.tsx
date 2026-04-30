@@ -1,5 +1,50 @@
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from "react";
 
+// ---------------------------------------------------------------------------
+// Slider
+// ---------------------------------------------------------------------------
+
+export interface SliderProps {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+}
+
+export function Slider({ label, min, max, step, value, onChange }: SliderProps) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: "var(--text-faint)",
+            textTransform: "uppercase" as const,
+            letterSpacing: "0.08em",
+            fontFamily: "var(--font-mono)",
+          }}
+        >
+          {label}
+        </span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-strong)" }}>
+          {value.toLocaleString()}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ accentColor: "var(--accent, var(--brand-500))", width: "100%", cursor: "pointer" }}
+      />
+    </div>
+  );
+}
+
 export function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }

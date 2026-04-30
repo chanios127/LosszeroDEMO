@@ -12,9 +12,12 @@ export interface Tweaks {
   chartPalette: ChartPalette;
   accentHue: number;
   debugViz: boolean;
+  maxTokens: number;
+  thinkingEnabled: boolean;
+  thinkingBudget: number;
 }
 
-const TWEAKS_LS_KEY = "losszero.tweaks.v1";
+export const TWEAKS_LS_KEY = "losszero.tweaks.v1";
 
 const DEFAULTS: Tweaks = {
   theme: "dark",
@@ -23,6 +26,9 @@ const DEFAULTS: Tweaks = {
   chartPalette: "teal",
   accentHue: 185,
   debugViz: false,
+  maxTokens: 10000,
+  thinkingEnabled: false,
+  thinkingBudget: 4096,
 };
 
 const DENSITY_SCALE: Record<Density, number> = {
@@ -128,6 +134,28 @@ function applyTweaks(t: Tweaks) {
     "--ring",
     `oklch(${lightBase} ${chroma} ${hue} / 0.4)`,
   );
+}
+
+/** Read LLM options from localStorage at call time — always fresh, no React state. */
+export function readStoredLlmOptions() {
+  try {
+    const raw = localStorage.getItem(TWEAKS_LS_KEY);
+    if (raw) {
+      const t = JSON.parse(raw) as Partial<Tweaks>;
+      return {
+        maxTokens: typeof t.maxTokens === "number" ? t.maxTokens : DEFAULTS.maxTokens,
+        thinkingEnabled: typeof t.thinkingEnabled === "boolean" ? t.thinkingEnabled : DEFAULTS.thinkingEnabled,
+        thinkingBudget: typeof t.thinkingBudget === "number" ? t.thinkingBudget : DEFAULTS.thinkingBudget,
+      };
+    }
+  } catch {
+    // storage disabled
+  }
+  return {
+    maxTokens: DEFAULTS.maxTokens,
+    thinkingEnabled: DEFAULTS.thinkingEnabled,
+    thinkingBudget: DEFAULTS.thinkingBudget,
+  };
 }
 
 export function useTweaks() {
