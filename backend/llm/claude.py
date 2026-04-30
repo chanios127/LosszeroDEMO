@@ -151,3 +151,9 @@ class ClaudeProvider(LLMProvider):
         except anthropic.APIError as exc:
             logger.exception("Anthropic API error: %s", exc)
             yield LLMEvent(type=LLMEventType.ERROR, message=str(exc))
+        except Exception as exc:
+            logger.exception("ClaudeProvider unexpected error: %s", exc)
+            yield LLMEvent(
+                type=LLMEventType.ERROR,
+                message=f"{type(exc).__name__}: {exc}",
+            )

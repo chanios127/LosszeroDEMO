@@ -315,6 +315,12 @@ class LMStudioProvider(LLMProvider):
         except httpx.HTTPError as exc:
             logger.exception("LM Studio HTTP error: %s", exc)
             yield LLMEvent(type=LLMEventType.ERROR, message=str(exc))
+        except Exception as exc:
+            logger.exception("LMStudioProvider unexpected error: %s", exc)
+            yield LLMEvent(
+                type=LLMEventType.ERROR,
+                message=f"{type(exc).__name__}: {exc}",
+            )
 
     async def _complete_without_tools(
         self, messages: list[Message]
@@ -375,3 +381,9 @@ class LMStudioProvider(LLMProvider):
         except httpx.HTTPError as exc:
             logger.exception("LM Studio fallback error: %s", exc)
             yield LLMEvent(type=LLMEventType.ERROR, message=str(exc))
+        except Exception as exc:
+            logger.exception("LM Studio fallback unexpected error: %s", exc)
+            yield LLMEvent(
+                type=LLMEventType.ERROR,
+                message=f"{type(exc).__name__}: {exc}",
+            )

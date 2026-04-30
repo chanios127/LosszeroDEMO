@@ -282,6 +282,54 @@ FROM dbo.TGW_TaskDailyLog td
 **해결**: D7 해결 시 자동 해소 예상. 별도 대책 무필요.
 **우선순위**: 🟠 (D7 종속)
 
+### D9. 🔴 Instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출
+**발생 시점**: 2026-04-30 — "직원별 최근 업무 일지... 시각화" 회귀 (instruct 모델 사용)
+**증상**:
+- 모든 도구 호출 전후 LLM의 내부 추론·계획이 💬 메시지로 사용자에게 그대로 노출:
+  - 각 도구 호출 전: 300~500단어 계획 설명 + markdown 코드 블록 (SQL/JSON 전체 포함)
+  - 도구 오류 후: "죄송합니다" + 오류 자기분석 + 수정 접근법 (전체 데이터 재임베드)
+  - 사용자가 보는 것: 에이전트의 모든 시도·실패·분석·재시도를 순서대로 노출
+- Chat 모델 대비 도구 호출 1회당 사용자 가시 텍스트 5~10배
+- LLM이 오류를 "시스템의 과도한 감지 알고리즘" 으로 자기진단하여 사용자에게 잘못된 신호 전달
+**위치**: `backend/agent/loop.py` — text_delta emit 경로 / `backend/llm/lm_studio.py` — streaming
+**본질**: Chat template에 tool calling 지원이 없는 instruct 모델은 "도구를 호출하기 전에 출력을 생략"하는 개념이 없음. 모든 reasoning이 streamed text로 변환되어 AgentLoop가 그대로 emit.
+- Chat 모델(function calling 지원): 도구 호출 전 text 없거나 1줄 / 도구 결과 후 간결한 다음 단계
+- Instruct 모델: 전체 계획+SQL+JSON+자기분석을 text로 emit → 도구 호출 → 오류 후 전체 재분석 emit
+**가설**:
+1. LM Studio의 해당 모델이 `tool_calls` 포맷 대신 text embedding 형태로 함수 호출 → text가 모두 흘러나옴
+2. AgentLoop의 text_delta가 think block / tool reasoning 여부를 구분하지 않고 그대로 SSE 전송
+3. Frontend에 "에이전트 내부 추론을 숨기는" 레이어 없음 — 모든 💬 text가 AssistantBubble로 렌더
+**연관**: D9가 존재하면 D10 (build_report 우회) 패턴이 직접 파생됨. B4 (circuit breaker 부재)와 결합 시 장기 컨텍스트 bloat 가속.
+**해결 후보**:
+1. (즉시) 모델을 chat 모델 (function calling 지원) 로 교체 — A1 해결과 같은 방향
+2. (backend) AgentLoop에서 도구 호출 직전에 emit된 text를 `agent_thought` 이벤트로 분리 → frontend에서 접힌 상태로 표시
+3. (frontend) 도구 호출 사이의 assistant text를 기본 hidden, expand 가능한 "에이전트 추론" 섹션으로 분리
+4. (prompt) system_base.md에 "Do not output any text before a tool call" 강제 — 일부 instruct 모델은 이를 따를 수 있음
+**우선순위**: 🔴 P0 — 사용자에게 에러 메시지·실패 시도·잘못된 자기진단이 직접 노출되는 UX 손상
+
+### D10. 🔴 build_report 2회 실패 후 LLM이 build_view를 직접 수동 호출 (chain 우회)
+**발생 시점**: 2026-04-30 T7 (build_report 2회 실패) → T8·T9 (build_view 직접 호출)
+**증상**:
+- T7: build_report가 `blocks.1.metric.value Field required` 로 2회 실패 → RuntimeError
+- T8: LLM이 build_report를 재시도하는 대신 자신이 직접 ReportSchema를 구성하여 build_view 호출
+  - `"blocks": [{"type": "bar_chart", ...}, {"type": "pie_chart", ...}]` → `union_tag_invalid` (허용된 타입: `markdown/metric/chart/highlight`)
+  - `"summary": "최근 7일간..."` (str) → `Input should be a valid dictionary or instance of Summary` (객체 필요)
+  - `"data_refs": [{"rows": [...], "columns": [...]}]` → `Unable to extract tag using discriminator 'mode'` (`mode` 필드 없음)
+- T9: 오류 분석 후 재시도 — `"type": "chart"` 수정했으나 `viz_hint` + `data_ref` 누락, `summary` 여전히 str
+  - 추가 실패: `summary.Input should be a valid dictionary`, `blocks.0.chart.viz_hint Field required`, `blocks.0.chart.data_ref Field required`, `data_refs.0 Unable to extract tag using discriminator 'mode'`
+**위치**: `backend/tools/build_view/tool.py:64` — `ReportSchema.model_validate(input["report_schema"])`
+**본질**: Instruct 모델이 build_report 오류를 "도구의 제약"으로 판단 → "직접 ReportSchema 생성 후 build_view 호출" 시도. 그러나 ReportSchema 복잡도(summary 객체, data_refs.mode 판별자, chart.viz_hint enum, chart.data_ref int 인덱스)를 instruct 모델이 추론만으로 정확히 구성 불가.
+- 의도된 chain: `db_query → build_report → build_view`
+- 실제 chain: `db_query → [build_report 2x fail] → (LLM 직접 구성) → build_view 2x fail`
+- 결과: 추가 4개 도구 호출 실패 + 각 실패마다 D9로 인해 500+ 단어 분석 텍스트 사용자 노출
+**연관**: D9의 직접 파생 (instruct 모델의 verbose reasoning이 "build_report를 건너뛰자" 결정으로 이어짐). D1·D5 (build_report 스키마 오류)가 트리거.
+**해결 후보**:
+1. build_view `description.md`에 "반드시 build_report 출력 결과만 입력. 직접 ReportSchema 구성 금지" 명시
+2. build_view 입력 검증에 "build_report를 먼저 호출하셨습니까?" 가이드 포함
+3. build_report 실패 시 에러 메시지에 "build_view 직접 호출 금지" 명시
+4. (근본) D9 해결 (모델 교체 또는 chain 강제) → LLM이 우회 시도 자체를 안 함
+**우선순위**: 🔴 P0 — build_report chain 완전 붕괴 시나리오. D9와 함께 해결 필요.
+
 ---
 
 ## E. 시스템 프롬프트 / 문서 격차
@@ -422,6 +470,36 @@ FROM dbo.TGW_TaskDailyLog td
 ### G3. ⚪ 다른 reasoning 마커 미처리
 **참조**: F4
 
+### G4. 🟢 Startup banner가 active provider 미표시 (LM Studio probe만 표시)
+**발생 시점**: 2026-04-30 — 사용자가 `LLM_PROVIDER=claude`로 설정했음에도 banner는 LM Studio URL + 모델 목록만 출력 → "claude로 라우팅 안 됨"으로 오인
+**위치**: `backend/main.py:88-127` lifespan
+**본질**: banner 로직이 `LM_STUDIO_BASE_URL`만 probe. 실제 활성 provider(`LLM_PROVIDER` env) 정보 출력 없음.
+**부수 발견 — .env override 함정**: `main.py:18-21` `load_dotenv(_root_env, override=True)` — PowerShell에서 `$env:LLM_PROVIDER="claude"` 해도 root `.env` 파일이 우선 (override). PS env vs .env file 우선순위 혼동 위험.
+**해결**: 본 사이클에 supervisor 직접 fix (commit 미정 — 본 paste 직후 커밋 예정).
+- `Provider : <name>` 라인 신설
+- claude path 분기: `ANTHROPIC_API_KEY` 존재 + `CLAUDE_MODEL` 표시 (값 노출 X, ✔/✘만)
+- 알 수 없는 provider 명시적 ✘ 표시
+**우선순위**: 🟢 본 사이클 처리
+
+### G5. 🟢 LLM Provider 예외 catch 좁음 (specific type만)
+**발생 시점**: 2026-04-30 — "Failed to fetch" 증상 + backend 터미널 로그 침묵 관찰
+**위치**:
+- `backend/llm/claude.py:151-153` — `except anthropic.APIError`만 catch
+- `backend/llm/lm_studio.py:315-317` (complete) + `375-377` (fallback) — `except httpx.HTTPError`만 catch
+**본질**: 위 type 외 예외(`AttributeError`, `KeyError`, `ValueError`, SDK 내부 다른 예외 등)는 silent propagate. logger.exception 호출 안 됨. 사용자 측에는 "ERROR event 없이 stream 종결" → frontend "Failed to fetch".
+**해결**: bare `except Exception` 추가 (각 위치). `f"{type(exc).__name__}: {exc}"` 형식으로 LLM ERROR event message에도 type 정보 포함. 본 사이클 supervisor 직접 fix.
+**우선순위**: 🟢 본 사이클 처리
+
+### G6. ⚪ "Failed to fetch" 본질 — 별개 진단 필요
+**발생 시점**: 2026-04-30 (스크린샷)
+**증상**: Frontend에 빈 agent 버블 2개 + "Failed to fetch" 표시. backend 터미널 로그 0줄.
+**가설**:
+- (a) 백엔드 미기동 또는 startup 단계 silent crash
+- (b) 백엔드 활성 but `/api/query` 도달 전 네트워크 reset
+- (c) G5 (좁은 예외 catch)로 SDK-level 예외 silent propagate → stream 끊김
+**진단 절차**: G4·G5 fix + backend 재기동 후 재현 시도. 새 banner로 active provider 확인. 새 broader catch가 logger.exception 발사하는지 관찰.
+**우선순위**: 🟠 (G4·G5 fix 후 재현 결과로 root 결정)
+
 ---
 
 ## H. 미분류 / 관찰 보류
@@ -500,6 +578,8 @@ FROM dbo.TGW_TaskDailyLog td
 - **2026-04-30 (#4)**: 16턴 trap 실측 로그 추가 박제. D7 강화(14턴 연속 차단 실측), **D7-수반 신설 (가드 에러 메시지가 LLM에 잘못된 진단 주입 → self-correction 영구 실패)**, D8 보강(`LIKE→LINE` 일관 오타), B5 신설 (continue_callback 정책 부재로 turn limit 무력화), B4 강화(16턴 실측), A2 분기(A2-a warmup vs A2-b context bloat). **D7 + D7-수반 + B4 묶음 fix 강력 권장** — 이 셋 없이는 모든 분류·집계 분석 시나리오가 무한 트랩.
 - **2026-04-30 (#5)**: **E7 신설** — 한글 컬럼 proactive 금지 규칙이 system_base.md / db_query description.md 어디에도 없음. D7 가드 fix는 reactive, E7 prompt 추가는 proactive. **양쪽 묶음 fix가 본질 해결**. E7 추가만으로도 D7·D7-수반·B4·A2-b·D8 트리거 빈도 즉시 큰 감소 예상.
 - **2026-04-30 (#6)**: Phase 10 Step 1+2 머지 완료 (`8366824` + `ffababa` + merge `86ed1dd`). D7·D7-수반·E7·D5·D6·E1 → 🟠 (proactive prompt + reactive guard 짝 fix 적용, 라이브 multi-turn 회귀 대기). C2·D8·A2-b는 D7 자연 해소 종속. 잔재 P0: A3 (httpx timeout), B4 (circuit breaker), C1 (db_query 코드 cap), A1 (LM Studio Jinja — 모델 교체 후 재현 검증).
+- **2026-04-30 (#7)**: 사용자 회귀 시도 중 "Failed to fetch" + backend 터미널 침묵 발견. G4 (startup banner active provider 미표시) + G5 (provider 예외 catch 좁음) 박제 + 본 사이클 supervisor 직접 fix. G6 (Failed to fetch 본질)은 G4·G5 fix 후 재현 결과로 root 결정. 부수 발견: `.env` `override=True` 함정 (PS `$env:` < .env 파일).
+- **2026-04-30 (#7)**: instruct 모델 회귀 로그 분석. **D9 신설** (instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출) + **D10 신설** (build_report 2회 실패 후 LLM이 build_view 직접 수동 호출 — chain 우회). **중요: 로그의 D7 트랩은 FALSE REGRESSION** — Phase 10 Step 1 fix가 코드에 정상 적용됨이 `tool.py` 직접 확인으로 입증. 로그의 구 에러 메시지는 백엔드 미재시작 증거. **즉시 액션: 백엔드 재시작 필요.**
 
 ## 신규 케이스 추가 가이드
 

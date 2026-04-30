@@ -96,15 +96,28 @@ async def lifespan(app: FastAPI):
     print("─" * 50)
     print(f"  Server   : http://{host}:{port}")
 
-    # LLM 서버 health
-    try:
-        async with _httpx.AsyncClient(timeout=3.0) as c:
-            r = await c.get(f"{llm_base}/models")
-        models = r.json().get("data", [])
-        names = ", ".join(m.get("id", "") for m in models[:3]) or "—"
-        print(f"  LLM      : ✔  {llm_base}  [{names}]")
-    except Exception as e:
-        print(f"  LLM      : ✘  {llm_base}  ({e})")
+    # LLM provider + reachability
+    provider = os.environ.get("LLM_PROVIDER", "claude").lower()
+    print(f"  Provider : {provider}")
+    if provider == "lm_studio":
+        try:
+            async with _httpx.AsyncClient(timeout=3.0) as c:
+                r = await c.get(f"{llm_base}/models")
+            models = r.json().get("data", [])
+            names = ", ".join(m.get("id", "") for m in models[:3]) or "—"
+            print(f"  LLM      : ✔  {llm_base}  [{names}]")
+        except Exception as e:
+            print(f"  LLM      : ✘  {llm_base}  ({e})")
+    elif provider == "claude":
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+        model = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+        mark = "✔" if has_key else "✘ (ANTHROPIC_API_KEY missing)"
+        print(f"  LLM      : {mark}  Anthropic API  [{model}]")
+    else:
+        print(
+            f"  LLM      : ✘  Unknown provider {provider!r} "
+            "(expected 'claude' or 'lm_studio')"
+        )
 
     # MSSQL health
     try:
