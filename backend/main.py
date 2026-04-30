@@ -250,7 +250,7 @@ class QueryRequest(BaseModel):
     max_tokens: int | None = None              # 1000 ~ 32000
     thinking_enabled: bool | None = None
     thinking_budget: int | None = None         # 1024 ~ 16000
-    max_turns: int | None = None               # 1 ~ 50, env AGENT_MAX_TURNS fallback
+    max_turns: int | None = None               # 1 ~ 1000, env AGENT_MAX_TURNS fallback
 
 
 class QueryResponse(BaseModel):
@@ -468,7 +468,7 @@ async def start_query(body: QueryRequest):
         env_default_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
         max_turns = body.max_turns if body.max_turns and body.max_turns > 0 else env_default_turns
         # Sanity clamp — prevent runaway loops or zero-turn inputs from upstream.
-        max_turns = max(1, min(max_turns, 50))
+        max_turns = max(1, min(max_turns, 1000))
 
         async def _continue_callback() -> bool:
             gate = asyncio.Event()

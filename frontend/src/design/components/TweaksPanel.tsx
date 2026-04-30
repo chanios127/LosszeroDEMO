@@ -286,7 +286,7 @@ export default function TweaksPanel({
             <Slider
               label="최대 턴 (도구 호출 반복 한도)"
               min={1}
-              max={50}
+              max={1000}
               step={1}
               value={tweaks.maxTurns}
               onChange={(v) => setTweak("maxTurns", v)}
