@@ -580,16 +580,34 @@ async def stream_events(stream_key: str):
         raise HTTPException(status_code=404, detail="Stream not found")
 
     async def event_generator():
+        # Idle keep-alive: long LLM reasoning (chain-of-thought, sub-agent
+        # calls) can leave _sessions[stream_key] empty for tens of seconds.
+        # Without a periodic comment line, intermediaries (nginx / Vite proxy
+        # / browser EventSource) may close the connection on idle (G7). Pair
+        # this with the longer LM_STUDIO_TIMEOUT_READ in lm_studio.py (A3).
         sent = 0
+        loop = asyncio.get_event_loop()
+        last_yield = loop.time()
+        heartbeat_interval = float(os.environ.get("SSE_HEARTBEAT_SEC", "15"))
         while True:
             events = _sessions[stream_key]
+            emitted = False
             while sent < len(events):
                 event = events[sent]
                 data = json.dumps(event.model_dump(), ensure_ascii=False, default=str)
                 yield f"event: {event.type.value}\ndata: {data}\n\n"
                 sent += 1
+                emitted = True
                 if event.type in (EventType.FINAL, EventType.ERROR):
                     return
+            now = loop.time()
+            if emitted:
+                last_yield = now
+            elif now - last_yield >= heartbeat_interval:
+                # SSE comment lines are ignored by EventSource clients but
+                # keep the TCP connection alive across proxies.
+                yield ": heartbeat\n\n"
+                last_yield = now
             await asyncio.sleep(0.05)
 
     return StreamingResponse(
