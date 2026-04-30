@@ -158,6 +158,11 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
     session_id: str | None = None
+    # Optional per-request LLM tuning (forwarded to provider.complete via AgentLoop).
+    # When None, provider falls back to env defaults.
+    max_tokens: int | None = None              # 1000 ~ 32000
+    thinking_enabled: bool | None = None
+    thinking_budget: int | None = None         # 1024 ~ 16000
 
 
 class QueryResponse(BaseModel):
@@ -183,6 +188,21 @@ async def health():
 async def list_domains():
     """Return registered domains for frontend dynamic rendering."""
     return get_domains_summary()
+
+
+@app.get("/api/defaults")
+async def get_defaults():
+    """Provider-aware default tuning values for the frontend tweak panel."""
+    provider = os.environ.get("LLM_PROVIDER", "claude").lower()
+    max_tokens_env = (
+        "CLAUDE_MAX_TOKENS" if provider == "claude" else "LM_STUDIO_MAX_TOKENS"
+    )
+    return {
+        "provider": provider,
+        "max_tokens": int(os.environ.get(max_tokens_env, "10000")),
+        "thinking_budget": int(os.environ.get("CLAUDE_THINKING_BUDGET", "4096")),
+        "thinking_supported": provider == "claude",
+    }
 
 
 class SqlRequest(BaseModel):
@@ -375,6 +395,9 @@ async def start_query(body: QueryRequest):
             max_turns=max_turns,
             domain_context=domain_ctx,
             continue_callback=_continue_callback,
+            max_tokens=body.max_tokens,
+            thinking_enabled=body.thinking_enabled,
+            thinking_budget=body.thinking_budget,
         )
 
         # ── 터미널 로그 상태 ──────────────────────────────────────
