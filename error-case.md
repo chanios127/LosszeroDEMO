@@ -63,17 +63,22 @@ AgentLoop: empty LLM response on turn 1
 - A2-b는 D7·B4 fix 시 자동 해소 (트랩 자체가 사라짐)
 - A2-a는 별도 ⚪ 관찰
 
-### A3. 🔵 httpx ReadTimeout (long-context 요청)
-**발생 시점**: 2026-04-30 — T3 회차에서 db_query가 32,709 행 반환 후 다음 LLM 호출
+### A3. 🔴 httpx ReadTimeout (long-context 요청 / reasoning 모델 thinking 시간)
+**발생 시점**:
+- 2026-04-30 (1차): T3 회차에서 db_query가 32,709 행 반환 후 다음 LLM 호출
+- 2026-04-30 (2차 확인): reasoning 모델(`qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2`) 환경에서 200행 쿼리 결과 처리 중 동일 에러. **쿼리 크기가 작아도 트리거됨 — reasoning 모델의 thinking 단계 자체가 120s 초과.**
 **증상**:
 ```
 ERROR:llm.lm_studio:LM Studio HTTP error
 httpcore.ReadTimeout → httpx.ReadTimeout
 ```
 **위치**: `backend/llm/lm_studio.py:143-146` — `httpx.AsyncClient(timeout=120.0)`
-**본질**: 120s 단일 float = 모든 phase 120s. 32K 행 prompt 처리 + 모델 thinking이 120s 초과.
+**본질**: 120s 단일 float = 모든 phase(connect/read/write) 동일 제약. 2차 확인으로 입증:
+- 1차: 32K 행 → prompt 처리 시간 초과
+- 2차: 200행만으로도 → reasoning 모델의 `<think>` 추론 단계(chain-of-thought)가 120s+ 소요
+- **reasoning 모델 전환 후 A3가 실질적 P0로 격상** — reasoning 없는 모델에서는 간헐적, reasoning 모델에서는 거의 모든 복잡한 쿼리에서 트리거 가능
 **해결**: `httpx.Timeout(connect=10, read=600, write=30, pool=30)` + `LM_STUDIO_TIMEOUT_READ` env. plan Fix-D.
-**우선순위**: 🔴 (P0). plan 포함됨.
+**우선순위**: 🔴 P0 — **reasoning 모델 도입으로 즉시 해결 없이는 모든 분석 쿼리 차단 수준**.
 
 ### A4. 🟠 `model='(unset)'` 로깅 (cosmetic)
 **위치**: `backend/llm/lm_studio.py:138, 215`
@@ -282,7 +287,7 @@ FROM dbo.TGW_TaskDailyLog td
 **해결**: D7 해결 시 자동 해소 예상. 별도 대책 무필요.
 **우선순위**: 🟠 (D7 종속)
 
-### D9. 🔴 Instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출
+### D9. 🟠 Instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출 (reasoning 모델 전환으로 대폭 개선)
 **발생 시점**: 2026-04-30 — "직원별 최근 업무 일지... 시각화" 회귀 (instruct 모델 사용)
 **증상**:
 - 모든 도구 호출 전후 LLM의 내부 추론·계획이 💬 메시지로 사용자에게 그대로 노출:
@@ -457,6 +462,15 @@ FROM dbo.TGW_TaskDailyLog td
 **관찰 항목**: backend 로그 끝까지(turn N final 또는 ERROR) + frontend SSE 마지막 event type
 **우선순위**: 🟠 (본 화면이 영구 stall로 끝나면 🔴, 단순 지연이면 ⚪로 강등)
 
+### F7. ⚪ Reasoning 모델에서 도구 호출 전 빈 `💬` 메시지 전송 → 빈 assistant bubble
+**발생 시점**: 2026-04-30 — reasoning 모델(`qwen3.5-27b`) 사용 시 관찰
+**증상**: 백엔드 터미널에서 `🧠 [THINK]` 다음 `💬 ` (내용 없이 개행만) 출력. 도구 호출 전 LLM text output이 빈 문자열 또는 whitespace만.
+**위치**: `backend/agent/loop.py` text_delta emit → frontend AssistantBubble
+**가설**: Reasoning 모델은 `<think>` 블록 이후 도구 호출로 즉시 전환 — 도구 호출 전 추가 텍스트가 없음. 그러나 AgentLoop가 빈 string ""도 text_delta로 emit하여 프론트에서 빈 버블 렌더 가능성.
+**연관**: F5 (빈 ThinkBlock)와 유사 패턴이나 위치가 다름. A3 fix 후 전체 pipeline 완료되면 자연 검증 가능.
+**해결 후보**: AgentLoop에서 text content가 whitespace-only이면 text_delta event emit 스킵.
+**우선순위**: ⚪ (A3 fix 후 렌더 결과 확인 시점까지 관찰 보류)
+
 ---
 
 ## G. 환경 / 설정
@@ -466,6 +480,49 @@ FROM dbo.TGW_TaskDailyLog td
 
 ### G2. 🔴 httpx timeout 환경변수화 안 됨
 **참조**: A3
+
+### G7. 🔴 SSE event_generator heartbeat 없음 → LLM 처리 중 무음 구간에서 연결 종료 위험
+**발생 시점**: 2026-04-30 — reasoning 모델 사용 시 "프론트에서 요청 대기 시간이 굉장히 짧은거 같다" 관찰
+**증상**: 사용자 쿼리 제출 후 LLM이 응답하기 전 일정 시간 후 프론트엔드에서 SSE 연결 종료.
+**위치**:
+- `backend/main.py:559-576` — `event_generator()` + `StreamingResponse`
+- `frontend/vite.config.ts:8-13` — Vite proxy 설정 (`timeout`/`proxyTimeout` 미설정)
+**본질**:
+```python
+# event_generator 핵심 루프
+while True:
+    events = _sessions[stream_key]
+    while sent < len(events):
+        yield ...  # 이벤트 있을 때만 전송
+    await asyncio.sleep(0.05)  # 없으면 50ms 대기 후 재폴링
+```
+LLM이 처리 중일 때(특히 reasoning 모델의 chain-of-thought 단계, 30~120s+) `_sessions[stream_key]`에 이벤트가 없음 → event_generator는 50ms 루프를 돌지만 클라이언트에 아무것도 전송 안 함 → SSE 연결이 수십 초 동안 **완전 무음** 상태.
+
+이 무음 구간이 A3 (httpx 120s timeout)과 합쳐질 때:
+1. LM Studio가 reasoning 중 → backend → frontend 방향으로 이벤트 0
+2. A3 타임아웃 → backend가 ErrorEvent를 append → event_generator가 감지하여 전송 → SSE 종료
+3. 사용자 입장: "쿼리 보냈는데 잠깐 기다리다 에러" → **120s가 체감상 굉장히 짧게 느껴짐**
+
+추가: SSE spec은 서버가 `: (comment)` 형태의 heartbeat를 보내도록 권고. heartbeat 없으면:
+- 일부 nginx/reverse proxy: 기본 60s idle 후 연결 끊기
+- Vite dev proxy (`http-proxy`): `timeout`/`proxyTimeout` 기본값 0이나, Node.js socket idle timeout 적용 가능
+- 브라우저 EventSource: 대부분 재연결 시도하나, Vite proxy가 먼저 끊으면 무의미
+
+**Vite proxy 상태**: `vite.config.ts`에 SSE 관련 설정 없음. `timeout`/`proxyTimeout` 모두 미설정(기본 0 = no timeout). Vite proxy 자체는 timeout 없으나, Node.js 소켓 레벨 idle timeout은 환경마다 다름.
+**해결 후보**:
+1. **(즉시, backend)** event_generator에 heartbeat 추가 — 이벤트 없을 때 15s마다 SSE comment 라인 전송:
+   ```python
+   # 전송할 내용 없을 때
+   if idle_seconds >= 15:
+       yield ": heartbeat\n\n"
+       idle_seconds = 0
+   ```
+2. **(즉시, backend)** A3 fix와 묶음 — httpx timeout 600s로 연장 시 무음 구간이 더 길어지므로 heartbeat가 필수
+3. **(보완, vite)** Vite proxy에 명시적 SSE 안전 설정 추가:
+   ```ts
+   proxy: { "/api": { target: "...", changeOrigin: true, timeout: 0, proxyTimeout: 0 } }
+   ```
+**우선순위**: 🔴 P0 — **A3 fix(httpx timeout 연장)를 적용하면 무음 구간이 더 길어져 G7이 더 심해짐. A3 + G7은 반드시 묶음 fix 필요**.
 
 ### G3. ⚪ 다른 reasoning 마커 미처리
 **참조**: F4
@@ -579,7 +636,9 @@ FROM dbo.TGW_TaskDailyLog td
 - **2026-04-30 (#5)**: **E7 신설** — 한글 컬럼 proactive 금지 규칙이 system_base.md / db_query description.md 어디에도 없음. D7 가드 fix는 reactive, E7 prompt 추가는 proactive. **양쪽 묶음 fix가 본질 해결**. E7 추가만으로도 D7·D7-수반·B4·A2-b·D8 트리거 빈도 즉시 큰 감소 예상.
 - **2026-04-30 (#6)**: Phase 10 Step 1+2 머지 완료 (`8366824` + `ffababa` + merge `86ed1dd`). D7·D7-수반·E7·D5·D6·E1 → 🟠 (proactive prompt + reactive guard 짝 fix 적용, 라이브 multi-turn 회귀 대기). C2·D8·A2-b는 D7 자연 해소 종속. 잔재 P0: A3 (httpx timeout), B4 (circuit breaker), C1 (db_query 코드 cap), A1 (LM Studio Jinja — 모델 교체 후 재현 검증).
 - **2026-04-30 (#7)**: 사용자 회귀 시도 중 "Failed to fetch" + backend 터미널 침묵 발견. G4 (startup banner active provider 미표시) + G5 (provider 예외 catch 좁음) 박제 + 본 사이클 supervisor 직접 fix. G6 (Failed to fetch 본질)은 G4·G5 fix 후 재현 결과로 root 결정. 부수 발견: `.env` `override=True` 함정 (PS `$env:` < .env 파일).
-- **2026-04-30 (#7)**: instruct 모델 회귀 로그 분석. **D9 신설** (instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출) + **D10 신설** (build_report 2회 실패 후 LLM이 build_view 직접 수동 호출 — chain 우회). **중요: 로그의 D7 트랩은 FALSE REGRESSION** — Phase 10 Step 1 fix가 코드에 정상 적용됨이 `tool.py` 직접 확인으로 입증. 로그의 구 에러 메시지는 백엔드 미재시작 증거. **즉시 액션: 백엔드 재시작 필요.**
+- **2026-04-30 (#8)**: instruct 모델 회귀 로그 분석. **D9 신설** (instruct 모델 출력 격리 실패 — 중간 추론 전체가 사용자 가시 텍스트로 노출) + **D10 신설** (build_report 2회 실패 후 LLM이 build_view 직접 수동 호출 — chain 우회). **중요: 로그의 D7 트랩은 FALSE REGRESSION** — Phase 10 Step 1 fix가 코드에 정상 적용됨이 `tool.py` 직접 확인으로 입증. 로그의 구 에러 메시지는 백엔드 미재시작 증거.
+- **2026-04-30 (#9)**: reasoning 모델(`qwen3.5-27b-reasoning-distilled` 등) 전환 후 회귀 로그 분석. **D7 fix 정상 작동 확인** (T1 SQL 200행 쿼리 통과 — 백엔드 재시작 확인, system_len 15797로 Phase 10 rules/ 로드 확인). **D9 🔴 → 🟠**: reasoning 모델이 `<think>` 블록 격리 작동 — 중간 추론 user-visible 문제 대폭 개선. **A3 🔵 → 🔴 격상**: reasoning 모델의 thinking 단계(chain-of-thought)가 120s 초과 → 200행 소규모 쿼리에서도 트리거. 즉시 fix 없이는 모든 분석 쿼리 차단 수준. **F7 신규 관찰 추가**: reasoning 모델에서 도구 호출 전 `💬` (빈 string) 전송 → 빈 assistant bubble 렌더 가능성.
+- **2026-04-30 (#10)**: "프론트에서 요청 대기 시간이 굉장히 짧은거 같다" 관찰 분석. `backend/main.py:559-576` event_generator + `vite.config.ts` 코드 검토. **G7 신설**: SSE heartbeat 없음 → LLM reasoning 무음 구간(30~120s+)에서 연결 종료 위험. **A3 + G7 반드시 묶음 fix** — httpx timeout 연장(A3)만 하면 무음 구간이 더 길어져 G7이 악화됨.
 
 ## 신규 케이스 추가 가이드
 
