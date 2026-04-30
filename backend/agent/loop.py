@@ -87,6 +87,10 @@ class AgentLoop:
         max_turns: int = 10,
         domain_context: str = "",
         continue_callback: ContinueCallback | None = None,
+        *,
+        max_tokens: int | None = None,
+        thinking_enabled: bool | None = None,
+        thinking_budget: int | None = None,
     ) -> None:
         self.llm = llm
         self.tools: dict[str, Tool] = {t.name: t for t in tools}
@@ -94,6 +98,28 @@ class AgentLoop:
         self._domain_context = domain_context
         self._continue_callback = continue_callback
         self._final_messages: list[Message] = []
+        self.max_tokens = max_tokens
+        self.thinking_enabled = thinking_enabled
+        self.thinking_budget = thinking_budget
+
+    def _llm_kwargs(self) -> dict:
+        """Keyword args forwarded to provider.complete on every turn."""
+        kwargs: dict = {}
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        if self.thinking_enabled is not None:
+            kwargs["thinking_enabled"] = self.thinking_enabled
+        if self.thinking_budget is not None:
+            kwargs["thinking_budget"] = self.thinking_budget
+        return kwargs
+
+    def _propagate_llm_options(self) -> None:
+        """Push current llm options to every sub-agent tool that supports it."""
+        kwargs = self._llm_kwargs()
+        for tool in self.tools.values():
+            setter = getattr(tool, "set_llm_options", None)
+            if callable(setter):
+                setter(**kwargs)
 
     def get_final_messages(self) -> list[Message]:
         """Snapshot of messages at end of last run() — includes system, user, assistant, tool."""
@@ -128,12 +154,19 @@ class AgentLoop:
             len(tool_schemas),
         )
 
+        # Propagate llm options to sub-agent tools (build_report/build_view)
+        # so their internal LLM calls inherit max_tokens / thinking config.
+        self._propagate_llm_options()
+        llm_kwargs = self._llm_kwargs()
+
         while turn < turn_limit:
             turn += 1
             pending_tool_call: ToolCall | None = None
             text_buf: list[str] = []
 
-            async for llm_event in self.llm.complete(messages, tool_schemas):
+            async for llm_event in self.llm.complete(
+                messages, tool_schemas, **llm_kwargs
+            ):
                 if llm_event.type == LLMEventType.TEXT_DELTA:
                     text_buf.append(llm_event.delta)
                     yield LLMChunkEvent(delta=llm_event.delta)
