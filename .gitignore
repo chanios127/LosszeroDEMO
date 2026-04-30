@@ -8,6 +8,7 @@ __pycache__/
 
 # Node
 node_modules/
+frontend/dist/
 
 # Claude Code (per-user permissions)
 .claude/settings.local.json

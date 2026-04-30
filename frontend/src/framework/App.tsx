@@ -46,8 +46,8 @@ export default function App() {
         <div className={currentPage === "ui-builder" ? "h-full" : "hidden"}>
           <UIBuilderPage />
         </div>
-        <div className={currentPage === "report-demo" ? "h-full" : "hidden"}>
-          <ReportArchivePage isVisible={currentPage === "report-demo"} />
+        <div className={currentPage === "report-archive" ? "h-full" : "hidden"}>
+          <ReportArchivePage isVisible={currentPage === "report-archive"} />
         </div>
       </AppShell>
       {showTweaks && (
