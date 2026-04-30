@@ -335,6 +335,23 @@ FROM dbo.TGW_TaskDailyLog td
 4. (근본) D9 해결 (모델 교체 또는 chain 강제) → LLM이 우회 시도 자체를 안 함
 **우선순위**: 🔴 P0 — build_report chain 완전 붕괴 시나리오. D9와 함께 해결 필요.
 
+### D11. 🟡 build_schema input shape 위반 — `user_intent` 를 `data_results[0]` 안쪽으로 nest (LLM 결함, 코드 수정 보류)
+**발생 시점**: 2026-04-30 (Cycle 2 시나리오 1 라이브 회귀 — "오늘 직원별 출근 현황을 간트차트로 만들어줘")
+**증상**:
+- LM Studio 모델이 build_schema 호출 시 `{data_results: [{columns, rows, user_intent: "..."}]}` 형태로 nest. 정상은 `{user_intent: str, data_results: [{columns, rows}]}`.
+- `backend/tools/build_schema/tool.py:166 user_intent = input["user_intent"]` → KeyError raise → tool result error
+- retry 시 LM Studio가 raw string fallback `<channel|><|tool_call>call:build_schema{...}` 출력 (Harmony 마커 정규화 실패, A1 변종) — tool_calls 미파싱 → chain 진행 불가
+**본질**: instruct 모델의 도구 호출 능력 한계. Tool input contract 자체는 명확히 정의됨 (top-level user_intent + data_results array). SKILL.md/system.md에 더 명시화하거나 tool.py에 defensive fallback 추가하는 건 모델 한계 과적합 → **본 케이스는 코드 수정 보류** (memory `feedback_no_llm_overfit.md` 적용)
+**위치**:
+- `backend/tools/build_schema/tool.py:166` — input contract 위반 시 KeyError raise (정상 동작)
+- `backend/llm/lm_studio.py` — Harmony 마커 fallback 실패 (A1 변종)
+**해결 후보**:
+1. **(권장)** Provider/모델 교체 — Claude Sonnet/Opus로 재회귀 시 재현 여부 확인. 재현 X면 본 케이스 영구 보류.
+2. (보류) build_schema/tool.py defensive fallback (`input.get("user_intent") or input["data_results"][0].get("user_intent")`) — 사용자 결정으로 보류 (과적합 방지)
+3. (보류) SKILL.md Examples에 정확한 호출 shape 1건 + 흔한 오류 1건 명시 — 효과 미지수 (모델이 system prompt 따르지 못 하는 결함이라)
+**연관**: D9 (instruct 모델 verbose reasoning) + D10 (chain 우회) 기반. circuit breaker B4 부재 시 무한 retry 위험.
+**우선순위**: 🟡 P2 (모델 한계 — 코드 결함 아님). Claude provider 회귀에서 재현 X 확인되면 close. 재현 시 P0 승격 + 코드 결함 재진단.
+
 ---
 
 ## E. 시스템 프롬프트 / 문서 격차
