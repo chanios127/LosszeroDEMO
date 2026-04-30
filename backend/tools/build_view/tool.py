@@ -11,7 +11,7 @@ from prompts.loader import get_subagent_system
 from tools.base import Tool
 from tools.build_schema.schema import ChartBlock, ReportSchema
 
-from .schema import BLOCK_COMPONENT_MAP, ViewBlockSpec, ViewBundle
+from .schema import ViewBlockSpec, ViewBundle, resolve_component
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +84,10 @@ class BuildViewTool(Tool):
             if "group_by" in axis and axis["group_by"] and block.group_by is None:
                 block.group_by = axis["group_by"]
 
-        # Build ViewBlockSpec list
+        # Build ViewBlockSpec list — chart.viz_hint=gantt/radar route to
+        # dedicated components; other block types use the static map.
         view_blocks = [
-            ViewBlockSpec(
-                index=i,
-                component=BLOCK_COMPONENT_MAP.get(block.type, "MarkdownBlock"),
-            )
+            ViewBlockSpec(index=i, component=resolve_component(block))
             for i, block in enumerate(report.blocks)
         ]
 

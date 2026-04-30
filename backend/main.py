@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,17 +21,25 @@ _root_env = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_root_env, override=True)
 load_dotenv()
 
-from agent.events import AgentEvent, ErrorEvent, EventType
+from agent.events import (
+    AgentEvent,
+    ErrorEvent,
+    EventType,
+    ReportProposedEvent,
+    ReportProposedMeta,
+)
 from agent.history import normalize_for_persistence, trim_history_safely
 from agent.loop import AgentLoop
 from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
 from llm import get_provider
 from llm.base import Message
+from storage import Report, delete_report, get_report, list_reports, save_report
 from tools.build_schema import BuildSchemaTool
 from tools.build_view import BuildViewTool
 from tools.db_query import DBQueryTool
 from tools.list_tables import ListTablesTool
+from tools.report_generate import ReportGenerateTool
 from tools.sp_call import SPCallTool
 
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +61,84 @@ _run_tasks: dict[str, asyncio.Task] = {}
 # so without this fallback domain_to_context drops out and the LLM loses
 # schema → hallucinates column names from prior result headers.
 _session_domains: dict[str, str] = {}
+
+# Pending report proposals — keyed by id_temp (uuid hex). Populated when the
+# agent loop runs report_generate; consumed by /api/reports/confirm/{id_temp}
+# (save) or /api/reports/proposal/{id_temp} (discard). 10-min TTL: stale
+# entries are filtered on access (no background sweep needed at this scale).
+_report_proposals: dict[str, dict] = {}
+_REPORT_PROPOSAL_TTL_SEC = 600
+# Schema contract version — bumped when ReportSchema block catalog changes.
+# Cycle 2 = "2" (7 blocks + 7 viz_hints).
+_REPORT_SCHEMA_VERSION = "2"
+
+
+def _proposal_is_fresh(entry: dict) -> bool:
+    return (time.time() - entry.get("created_at", 0)) <= _REPORT_PROPOSAL_TTL_SEC
+
+
+def _purge_stale_proposals() -> None:
+    """Drop entries older than the TTL. Called on access — cheap at demo scale."""
+    stale = [k for k, v in _report_proposals.items() if not _proposal_is_fresh(v)]
+    for k in stale:
+        _report_proposals.pop(k, None)
+
+
+def _build_report_proposed(
+    *,
+    session_domain: str,
+    tool_input: dict,
+    tool_output: object,
+) -> ReportProposedEvent | None:
+    """Compose a ReportProposedEvent + register the proposal in _report_proposals.
+
+    Returns None when the inputs are not in the expected shape (defensive — a
+    sub_agent could in principle return malformed data). Mutates the global
+    _report_proposals dict as a side effect so the proposal can later be
+    confirmed via /api/reports/confirm/{id_temp}.
+    """
+    schema_dict = tool_input.get("report_schema") if isinstance(tool_input, dict) else None
+    if not isinstance(schema_dict, dict):
+        logger.warning("report_proposed: missing report_schema in tool_input")
+        return None
+
+    meta_out = tool_output if isinstance(tool_output, dict) else {}
+    title = (meta_out.get("title") or schema_dict.get("title") or "(untitled)").strip()
+    summary = (meta_out.get("summary") or "").strip()
+    domain = (meta_out.get("domain") or session_domain or "").strip()
+    raw_tags = meta_out.get("tags") or []
+    tags = [str(t) for t in raw_tags if isinstance(t, (str, int, float))]
+
+    id_temp = uuid.uuid4().hex[:12]
+    blocks_n = len(schema_dict.get("blocks", []) or [])
+    refs_n = len(schema_dict.get("data_refs", []) or [])
+
+    _report_proposals[id_temp] = {
+        "id_temp": id_temp,
+        "schema": schema_dict,
+        "title": title,
+        "summary": summary,
+        "domain": domain,
+        "tags": tags,
+        "meta": {
+            "blocks": blocks_n,
+            "dataRefs": refs_n,
+            "schemaVersion": _REPORT_SCHEMA_VERSION,
+        },
+        "created_at": time.time(),
+    }
+
+    return ReportProposedEvent(
+        id_temp=id_temp,
+        meta=ReportProposedMeta(
+            blocks=blocks_n,
+            dataRefs=refs_n,
+            domain=domain,
+            schemaVersion=_REPORT_SCHEMA_VERSION,
+        ),
+        schema_=schema_dict,
+        summary=summary,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -374,6 +461,7 @@ async def start_query(body: QueryRequest):
         tools = [
             ListTablesTool(), DBQueryTool(), SPCallTool(),
             BuildSchemaTool(llm=llm), BuildViewTool(llm=llm),
+            ReportGenerateTool(llm=llm),
         ]
         max_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
 
@@ -410,6 +498,9 @@ async def start_query(body: QueryRequest):
         _buf = ""          # 청크 누적 버퍼
         _in_think = False  # think 블록 진입 여부
         _ans_started = False  # 💬 접두사 출력 여부
+        # report_generate tool_start input 캡처 — tool_result 시점에 사용해
+        # ReportProposedEvent를 합성하기 위한 1-shot 버퍼.
+        _pending_report_input: dict | None = None
         # ─────────────────────────────────────────────────────────
 
         final_answer = ""
@@ -427,6 +518,8 @@ async def start_query(body: QueryRequest):
                         _ans_started = False
                     args = json.dumps(event.input, ensure_ascii=False)
                     print(f"🔧 [T{event.turn}] {event.tool}({args})", flush=True)
+                    if event.tool == "report_generate":
+                        _pending_report_input = event.input
 
                 elif event.type == EventType.TOOL_RESULT:
                     if event.error:
@@ -438,6 +531,23 @@ async def start_query(body: QueryRequest):
                         if len(str(event.output)) > 200:
                             snippet += "..."
                         print(f"   → {snippet}", flush=True)
+                    if (
+                        event.tool == "report_generate"
+                        and event.error is None
+                        and _pending_report_input is not None
+                    ):
+                        proposed = _build_report_proposed(
+                            session_domain=_session_domains.get(session_id, ""),
+                            tool_input=_pending_report_input,
+                            tool_output=event.output,
+                        )
+                        if proposed is not None:
+                            _sessions[stream_key].append(proposed)
+                            print(
+                                f"   📄 report_proposed id_temp={proposed.id_temp}",
+                                flush=True,
+                            )
+                        _pending_report_input = None
 
                 elif event.type == EventType.LLM_CHUNK:
                     _buf += event.delta
@@ -594,7 +704,14 @@ async def stream_events(stream_key: str):
             emitted = False
             while sent < len(events):
                 event = events[sent]
-                data = json.dumps(event.model_dump(), ensure_ascii=False, default=str)
+                # by_alias=True so ReportProposedEvent.schema_ serializes as "schema"
+                # (and matches frontend types/events.ts mirror). Existing events have
+                # no aliases, so by_alias is a no-op for them.
+                data = json.dumps(
+                    event.model_dump(by_alias=True),
+                    ensure_ascii=False,
+                    default=str,
+                )
                 yield f"event: {event.type.value}\ndata: {data}\n\n"
                 sent += 1
                 emitted = True
@@ -684,6 +801,77 @@ async def clear_session(session_id: str):
     for k in keys_to_remove:
         _sessions.pop(k, None)
     return {"deleted": session_id}
+
+
+# ---------------------------------------------------------------------------
+# Reports archive — Cycle 2 Phase B
+# ---------------------------------------------------------------------------
+
+class ReportConfirmRequest(BaseModel):
+    """Body for POST /api/reports/confirm/{id_temp}.
+
+    Both fields are optional — frontend sends them only when the user edits
+    title/tags inline before confirming. Empty/None values fall back to the
+    sub_agent-derived defaults stored in the proposal.
+    """
+    title: str | None = None
+    tags: list[str] | None = None
+
+
+@app.get("/api/reports")
+async def reports_list():
+    """Return the archive listing — newest first, lightweight fields only."""
+    return list_reports()
+
+
+@app.get("/api/reports/{report_id}")
+async def reports_get(report_id: str):
+    report = get_report(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report.model_dump(mode="json", by_alias=True)
+
+
+@app.delete("/api/reports/{report_id}")
+async def reports_delete(report_id: str):
+    if not delete_report(report_id):
+        raise HTTPException(status_code=404, detail="Report not found")
+    return {"deleted": report_id}
+
+
+@app.post("/api/reports/confirm/{id_temp}")
+async def reports_confirm(id_temp: str, body: ReportConfirmRequest):
+    """HITL confirmation — persist a pending proposal as a permanent Report."""
+    _purge_stale_proposals()
+    proposal = _report_proposals.pop(id_temp, None)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="No pending proposal (missing or expired)")
+
+    title = (body.title or "").strip() or proposal.get("title") or "(untitled)"
+    if body.tags is not None:
+        tags = [str(t) for t in body.tags if isinstance(t, (str, int, float))]
+    else:
+        tags = list(proposal.get("tags") or [])
+
+    report = Report.model_validate({
+        "title": title,
+        "domain": proposal.get("domain", ""),
+        "tags": tags,
+        "schema": proposal.get("schema", {}),
+        "summary": proposal.get("summary", ""),
+        "meta": proposal.get("meta", {}),
+    })
+    save_report(report)
+    return report.model_dump(mode="json", by_alias=True)
+
+
+@app.delete("/api/reports/proposal/{id_temp}")
+async def reports_reject_proposal(id_temp: str):
+    """User rejected the proposal — drop it from the in-memory store."""
+    _purge_stale_proposals()
+    if _report_proposals.pop(id_temp, None) is None:
+        raise HTTPException(status_code=404, detail="No pending proposal (missing or expired)")
+    return {"discarded": id_temp}
 
 
 if __name__ == "__main__":
