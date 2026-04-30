@@ -284,6 +284,14 @@ export default function TweaksPanel({
         <Section label="LLM">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <Slider
+              label="최대 턴 (도구 호출 반복 한도)"
+              min={1}
+              max={50}
+              step={1}
+              value={tweaks.maxTurns}
+              onChange={(v) => setTweak("maxTurns", v)}
+            />
+            <Slider
               label="최대 출력 토큰"
               min={1000}
               max={32000}

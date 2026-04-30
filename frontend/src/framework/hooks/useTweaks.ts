@@ -15,6 +15,7 @@ export interface Tweaks {
   maxTokens: number;
   thinkingEnabled: boolean;
   thinkingBudget: number;
+  maxTurns: number;
 }
 
 export const TWEAKS_LS_KEY = "losszero.tweaks.v1";
@@ -29,6 +30,7 @@ const DEFAULTS: Tweaks = {
   maxTokens: 10000,
   thinkingEnabled: false,
   thinkingBudget: 4096,
+  maxTurns: 10,
 };
 
 const DENSITY_SCALE: Record<Density, number> = {
@@ -146,6 +148,7 @@ export function readStoredLlmOptions() {
         maxTokens: typeof t.maxTokens === "number" ? t.maxTokens : DEFAULTS.maxTokens,
         thinkingEnabled: typeof t.thinkingEnabled === "boolean" ? t.thinkingEnabled : DEFAULTS.thinkingEnabled,
         thinkingBudget: typeof t.thinkingBudget === "number" ? t.thinkingBudget : DEFAULTS.thinkingBudget,
+        maxTurns: typeof t.maxTurns === "number" ? t.maxTurns : DEFAULTS.maxTurns,
       };
     }
   } catch {
@@ -155,6 +158,7 @@ export function readStoredLlmOptions() {
     maxTokens: DEFAULTS.maxTokens,
     thinkingEnabled: DEFAULTS.thinkingEnabled,
     thinkingBudget: DEFAULTS.thinkingBudget,
+    maxTurns: DEFAULTS.maxTurns,
   };
 }
 

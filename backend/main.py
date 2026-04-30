@@ -250,6 +250,7 @@ class QueryRequest(BaseModel):
     max_tokens: int | None = None              # 1000 ~ 32000
     thinking_enabled: bool | None = None
     thinking_budget: int | None = None         # 1024 ~ 16000
+    max_turns: int | None = None               # 1 ~ 50, env AGENT_MAX_TURNS fallback
 
 
 class QueryResponse(BaseModel):
@@ -289,6 +290,7 @@ async def get_defaults():
         "max_tokens": int(os.environ.get(max_tokens_env, "10000")),
         "thinking_budget": int(os.environ.get("CLAUDE_THINKING_BUDGET", "4096")),
         "thinking_supported": provider == "claude",
+        "max_turns": int(os.environ.get("AGENT_MAX_TURNS", "10")),
     }
 
 
@@ -463,7 +465,10 @@ async def start_query(body: QueryRequest):
             BuildSchemaTool(llm=llm), BuildViewTool(llm=llm),
             ReportGenerateTool(llm=llm),
         ]
-        max_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
+        env_default_turns = int(os.environ.get("AGENT_MAX_TURNS", "10"))
+        max_turns = body.max_turns if body.max_turns and body.max_turns > 0 else env_default_turns
+        # Sanity clamp — prevent runaway loops or zero-turn inputs from upstream.
+        max_turns = max(1, min(max_turns, 50))
 
         async def _continue_callback() -> bool:
             gate = asyncio.Event()

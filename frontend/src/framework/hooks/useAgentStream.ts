@@ -351,6 +351,7 @@ export function useAgentStream() {
           max_tokens: llmOpts.maxTokens,
           thinking_enabled: llmOpts.thinkingEnabled,
           thinking_budget: llmOpts.thinkingEnabled ? llmOpts.thinkingBudget : undefined,
+          max_turns: llmOpts.maxTurns,
         }),
       });
 

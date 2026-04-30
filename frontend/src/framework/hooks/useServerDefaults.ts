@@ -5,6 +5,7 @@ export interface ServerDefaults {
   max_tokens: number;
   thinking_budget: number;
   thinking_supported: boolean;
+  max_turns: number;
 }
 
 export function useServerDefaults() {
