@@ -15,7 +15,7 @@ type Stage = {
 };
 
 const STAGE_LABEL: Record<string, string> = {
-  build_report: "분석 보고서 생성",
+  build_schema: "분석 보고서 생성",
   build_view: "시각화 구성",
 };
 

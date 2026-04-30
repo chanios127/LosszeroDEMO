@@ -15,7 +15,7 @@ export interface ChatMessage {
   vizHint?: VizHint;
   traceEvents?: AgentEvent[];
   isStreaming?: boolean;
-  /** build_report tool output captured during SSE (persisted to localStorage). */
+  /** build_schema tool output captured during SSE (persisted to localStorage). */
   reportSchema?: ReportSchema;
   /** build_view tool output captured during SSE. When present, ReportContainer
    *  routes blocks by ViewBlockSpec.component instead of falling back to

@@ -246,7 +246,7 @@ export function useAgentStream() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const esRef = useRef<EventSource | null>(null);
   const sessionRef = useRef<string | null>(null);
-  // Phase 9.5: capture build_report / build_view tool outputs during SSE so
+  // Phase 9.5: capture build_schema / build_view tool outputs during SSE so
   // the eventual `final` event can attach them to the assistant message.
   // Refs (not reducer state) — these don't render and reset on each new stream.
   const pendingReportSchemaRef = useRef<ReportSchema | null>(null);
@@ -268,9 +268,9 @@ export function useAgentStream() {
         const event: AgentEvent = JSON.parse(e.data);
 
         if (event.type === "tool_start" || event.type === "tool_result") {
-          // Phase 9.5: capture build_report / build_view outputs.
+          // Phase 9.5: capture build_schema / build_view outputs.
           if (event.type === "tool_result" && !event.error) {
-            if (event.tool === "build_report") {
+            if (event.tool === "build_schema") {
               pendingReportSchemaRef.current = event.output as ReportSchema;
             } else if (event.tool === "build_view") {
               pendingViewBundleRef.current = event.output as ViewBundle;
