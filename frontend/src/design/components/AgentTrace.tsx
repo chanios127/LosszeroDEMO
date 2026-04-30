@@ -135,8 +135,11 @@ export function ToolStep({ event }: { event: AgentEvent }) {
 // ---------------------------------------------------------------------------
 
 function ExecutedSqlBlock({ sql }: { sql: string }) {
+  const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
+  const handleCopy = async (e: { preventDefault: () => void; stopPropagation: () => void }) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       await navigator.clipboard.writeText(sql);
       setCopied(true);
@@ -146,67 +149,74 @@ function ExecutedSqlBlock({ sql }: { sql: string }) {
     }
   };
   return (
-    <div style={{ position: "relative" }}>
-      <div
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+      style={{ position: "relative" }}
+    >
+      <summary
         style={{
+          cursor: "pointer",
           fontSize: 10,
           color: "var(--text-dim)",
           textTransform: "uppercase",
           letterSpacing: "0.06em",
-          marginBottom: 4,
+          userSelect: "none",
+          padding: "2px 0",
         }}
       >
         Executed SQL
+      </summary>
+      <div style={{ position: "relative", marginTop: 4 }}>
+        <pre
+          className="mono"
+          style={{
+            margin: 0,
+            padding: "10px 12px",
+            background: "var(--bg-elev-3)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 6,
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: "var(--text-strong)",
+            whiteSpace: "pre",
+            overflowX: "auto",
+          }}
+        >
+          {sql}
+        </pre>
+        <button
+          type="button"
+          onClick={handleCopy}
+          style={{
+            position: "absolute",
+            top: 6,
+            right: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 8px",
+            fontSize: 10,
+            fontWeight: 500,
+            background: copied ? "var(--success)" : "var(--bg-elev-2)",
+            color: copied ? "var(--bg)" : "var(--text-muted)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: 4,
+            cursor: "pointer",
+            transition: "background 120ms, color 120ms",
+          }}
+          onMouseEnter={(e) => {
+            if (!copied) e.currentTarget.style.color = "var(--text-strong)";
+          }}
+          onMouseLeave={(e) => {
+            if (!copied) e.currentTarget.style.color = "var(--text-muted)";
+          }}
+        >
+          <CopyGlyph />
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
-      <pre
-        className="mono"
-        style={{
-          margin: 0,
-          padding: "10px 64px 10px 12px",
-          background: "var(--bg-elev-3)",
-          border: "1px solid var(--border-subtle)",
-          borderRadius: 6,
-          fontSize: 12,
-          lineHeight: 1.5,
-          color: "var(--text-strong)",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflowX: "auto",
-        }}
-      >
-        {sql}
-      </pre>
-      <button
-        type="button"
-        onClick={handleCopy}
-        style={{
-          position: "absolute",
-          top: 22,
-          right: 6,
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "4px 8px",
-          fontSize: 10,
-          fontWeight: 500,
-          background: copied ? "var(--success)" : "var(--bg-elev-2)",
-          color: copied ? "var(--bg)" : "var(--text-muted)",
-          border: "1px solid var(--border-subtle)",
-          borderRadius: 4,
-          cursor: "pointer",
-          transition: "background 120ms, color 120ms",
-        }}
-        onMouseEnter={(e) => {
-          if (!copied) e.currentTarget.style.color = "var(--text-strong)";
-        }}
-        onMouseLeave={(e) => {
-          if (!copied) e.currentTarget.style.color = "var(--text-muted)";
-        }}
-      >
-        <CopyGlyph />
-        {copied ? "Copied" : "Copy"}
-      </button>
-    </div>
+    </details>
   );
 }
 

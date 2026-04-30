@@ -428,10 +428,13 @@ export function ChartPieViz({
 export function DataTable({ data }: { data: Record<string, unknown>[] }) {
   if (!data.length) return null;
   const cols = Object.keys(data[0]);
+  // Cap visible rows at ~10 — taller result sets scroll within the block.
+  // Row height ≈ 33px (8 padding × 2 + ~17 line-height) → 10 rows + header ≈ 363px.
   return (
     <div
       style={{
         overflow: "auto",
+        maxHeight: 363,
         border: "1px solid var(--border-subtle)",
         borderRadius: "var(--r-md)",
       }}
@@ -440,7 +443,14 @@ export function DataTable({ data }: { data: Record<string, unknown>[] }) {
         style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
       >
         <thead>
-          <tr style={{ background: "var(--bg-elev-2)" }}>
+          <tr
+            style={{
+              background: "var(--bg-elev-2)",
+              position: "sticky",
+              top: 0,
+              zIndex: 1,
+            }}
+          >
             {cols.map((c) => (
               <th
                 key={c}
@@ -455,6 +465,7 @@ export function DataTable({ data }: { data: Record<string, unknown>[] }) {
                   letterSpacing: "0.04em",
                   borderBottom: "1px solid var(--border-subtle)",
                   whiteSpace: "nowrap",
+                  background: "var(--bg-elev-2)",
                 }}
               >
                 {c}
