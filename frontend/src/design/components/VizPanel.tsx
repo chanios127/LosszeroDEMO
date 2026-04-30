@@ -497,7 +497,11 @@ export function DataTable({
                       padding: "8px 12px",
                       color: isNum ? "var(--text-strong)" : "var(--text)",
                       textAlign: isNum ? "right" : "left",
-                      whiteSpace: "nowrap",
+                      whiteSpace: fillHeight ? "pre-wrap" : "nowrap",
+                      wordBreak: fillHeight ? "break-word" : undefined,
+                      verticalAlign: fillHeight ? "top" : undefined,
+                      maxWidth: fillHeight && !isNum ? 520 : undefined,
+                      lineHeight: fillHeight ? 1.5 : undefined,
                     }}
                   >
                     {v == null ? (
