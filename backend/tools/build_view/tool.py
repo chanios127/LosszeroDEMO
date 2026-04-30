@@ -20,15 +20,7 @@ _DESCRIPTION = (Path(__file__).parent / "description.md").read_text(encoding="ut
 # Strip qwen-style <think>...</think> reasoning blocks before json.loads.
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
-_AXIS_SYSTEM_PROMPT = """\
-Given a chart's viz_hint and available column names, return a JSON object with \
-the best x, y, and optional group_by column assignments.
-
-Rules:
-- Output ONLY valid JSON: {"x": "col", "y": "col" or ["col1","col2"], "group_by": "col" or null}
-- No markdown fences, no commentary.
-- x: categorical or time axis. y: numeric measure(s). group_by: optional grouping dimension.
-"""
+_AXIS_SYSTEM_PROMPT = (Path(__file__).parent / "system.md").read_text(encoding="utf-8").strip()
 
 
 def _fallback_axis(viz_hint: str, col_names: list[str]) -> dict[str, Any]:
