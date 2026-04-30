@@ -1,6 +1,6 @@
 # Supervisor Snapshot
 
-> 최종 갱신: 2026-04-30 (Cycle 2 Phase A 머지 + snapshot 추가 압축)
+> 최종 갱신: 2026-04-30 (Cycle 2 Phase B 머지)
 > 본 파일은 supervisor 세션 cold-start 시 최우선 정독 대상. **결정 박제소** + active operational context. 코드 변경 0.
 > 압축 정책: 완료된 phase / commit log는 ROADMAP `§"✅ Phase X 처리됨"` + git log가 진실 소스. 본 snapshot은 결정 + 잠금 + 진행 중 사이클만.
 > 진행 중 사이클이 종료되면 후속 supervisor가 본 snapshot의 active 섹션을 historical로 강등 + 압축.
@@ -10,7 +10,7 @@
 
 ## 1. 현재 상태 한 줄
 
-main HEAD `3c3a1e1` (이후 본 압축 commit). origin 동기화. **Cycle 2 Phase A 머지 완료** (`3f3b6b0`, +1627줄, 13 파일, dead-code on main). 진입 plan: `plans/CYCLE2-design-integration.md`. 다음 액션 = Phase B 위임 (BackEnd Infra) 또는 라이브 회귀.
+main HEAD `d5939a9` (Phase B merge). origin 동기화. **Cycle 2 Phase A+B 머지 완료** (A=`3f3b6b0` design/+types / B=`53eafe9`+merge `d5939a9` backend+events.ts mirror). 진입 plan: `plans/CYCLE2-design-integration.md`. 다음 액션 = Phase C 위임 (Front/View) — ReportArchivePage + useReportArchive + useReportProposal + AgentChatPage wiring + App.tsx 라우팅.
 
 ---
 
@@ -48,8 +48,8 @@ main HEAD `3c3a1e1` (이후 본 압축 commit). origin 동기화. **Cycle 2 Phas
 | Phase | 위임 | 상태 |
 |---|---|---|
 | **A. supervisor 직접 (design/)** | 병렬 세션 처리 | ✅ 머지 완료 (`3f3b6b0`) |
-| **B. BackEnd Infra 위임** — Pydantic 미러 + build_schema/system.md + rules + build_view 매핑 + report_generate sub_agent + storage + /api/reports + report_proposed SSE | 별도 세션 | 다음 액션 — 위임 명세 출력 후 BackEnd Infra cold-start |
-| **C. Front/View 위임** — ReportArchivePage + useReportArchive + useReportProposal + App.tsx 라우팅 | 별도 세션 | B 머지 후 진입 |
+| **B. BackEnd Infra 위임** — Pydantic 미러 + build_schema/system.md + rules + build_view 매핑 + report_generate sub_agent + storage + /api/reports + report_proposed SSE | `agent/backend-infra` | ✅ 머지 완료 (`53eafe9` + merge `d5939a9`). frontend `events.ts` 미러 atomic sync 포함 |
+| **C. Front/View 위임** — ReportArchivePage + useReportArchive + useReportProposal + AgentChatPage wiring + App.tsx 라우팅 | 별도 세션 | 다음 액션 — 위임 명세 출력 후 Front/View cold-start |
 
 ### Phase A 정합 점검 결과 박제
 
@@ -60,6 +60,18 @@ main HEAD `3c3a1e1` (이후 본 압축 commit). origin 동기화. **Cycle 2 Phas
 - `ReportProposalCard` = props-only (SSE/POST wiring은 Phase C)
 - `VIZ_MAP[gantt|radar]` = ChartBarViz fallback (실 라우팅은 ReportContainer, entry는 `Record<VizHint,_>` exhaustiveness용)
 - 신블록 5종 = main에 dead-code (LLM이 신블록 emit 안 하므로 실 영향 0). Phase B가 ReportSchema 신 union을 emit + Phase C가 ReportArchivePage wiring하면 활성화.
+
+### Phase B 정합 점검 결과 박제 (2026-04-30, merge `d5939a9`)
+
+- plan 8건 정확 실행. tsc + `from main import app` + `load_all_tool_skills()` 6 tools(`build_schema/build_view/db_query/list_tables/report_generate/sp_call`) + AgentEvent 10 variants(`+ReportProposedEvent`) + `/api/reports*` 5 routes + Report storage round-trip OK
+- `report_proposed` emission = `main.py::_run`에서 capture-emit 패턴 (TOOL_START에 input 캡처 → 다음 TOOL_RESULT(report_generate, no error)에서 ReportProposedEvent 합성·append). agent/loop.py 무변경 (잠금 단위 보호)
+- `_REPORT_SCHEMA_VERSION = "2"` 모듈 상수로 main.py에 정의 (cycle 5 export 작업과 함께 분리 정리 검토)
+- TTL 처리 = `_purge_stale_proposals` access-time check (10분, confirm/proposal endpoint 진입 직후 호출). 데모 스케일 충분, Phase 12 SQLite 마이그레이션 시 cron 컬럼 + sweep
+- Storage 경로 = `<repo_root>/storage/reports/<id>.json` (env override `REPORTS_DATA_DIR`). 본 머지에서 `.gitignore`에 `storage/reports/*.json` 추가
+- `ReportProposedEvent.schema` Pydantic field name = `schema_` (Pydantic reserved 회피), SSE 직렬화 `model_dump(by_alias=True)` (event_generator 전체 적용 — 기존 이벤트 무영향)
+- `report_generate` 호출 트리거 = SKILL.md/system.md에서 "보존/저장" 의도(저장해/보관해/만들어 저장 등) 한정. 단순 분석은 build_schema→build_view→final로 종료. 라이브 검수 후 phrase 미세조정 가능
+- frontend `events.ts` 미러 atomic sync (ReportProposedMeta + ReportProposedEvent + AgentEvent union 등재) — agent territory 위반 아님 (위임 §4 명시)
+- Phase B 미완 → Phase C 의존: ProposalCard wiring (useReportProposal hook + AgentChatPage inline render + /api/reports 호출). 본 Phase B는 contract만 완성
 
 ---
 

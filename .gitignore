@@ -14,3 +14,8 @@ node_modules/
 
 # Design export packages (regenerated each Claude Design hand-off cycle)
 design-export/
+
+# Cycle 2 — runtime report archive (Pydantic JSON, REPORTS_DATA_DIR override)
+storage/reports/*.json
+# Phase 11 hotfix snapshot output dir (debug-hotfixer / supervisor scratch)
+reports/
