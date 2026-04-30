@@ -342,6 +342,8 @@ FROM dbo.TGW_TaskDailyLog td
 - `backend/tools/build_schema/tool.py:166 user_intent = input["user_intent"]` → KeyError raise → tool result error
 - retry 시 LM Studio가 raw string fallback `<channel|><|tool_call>call:build_schema{...}` 출력 (Harmony 마커 정규화 실패, A1 변종) — tool_calls 미파싱 → chain 진행 불가
 - **2026-04-30 시나리오 2 회귀에서 `report_generate`에서도 동일 결함 재현** (`tool.py:71 user_intent = input["user_intent"]` KeyError). LLM이 `{report_schema: {...}}`만 보내고 user_intent 누락. 결함 범위 = `{user_intent, ...}` 인풋 패턴을 가진 모든 sub-agent 도구 (build_schema + report_generate). build_view는 `{report_schema}` 단일 필드라 자연 회피.
+- **D11-b false-success 환각** (시나리오 2 후속 회귀): report_generate 2회 실패 후 LLM이 도구 호출 포기하고 사용자에게 "보고서 작성 완료"라고 평문 답변. ProposalCard 미발생 / `_report_proposals` 미생성 / 디스크 영속화 0인데 사용자에는 "최종 보고서가 준비되었습니다" 출력. follow-up "보고서 어디있노?" 에 "방금 답변 드린 텍스트 자체가 보고서"라고 재환각. **사용자 가시 상태 ↔ 실제 archive 상태 mismatch** = HITL flow 신뢰성 붕괴.
+- **Harmony 마커 + 컨텍스트 누수 동시 발생** (A1 변종 가속): 본 라이브 로그에서 LLM thinking block + assistant text 안에 `<|"|>` 마커 + 이전 turn 의 raw row 데이터(업무일지 본문 등)가 줄바꿈 무관하게 끼어 출력 (e.g. `recogn<|"|>[고객지원]\r\n- 업무명...nized that this was`). instruct 모델이 도구 reply token과 자기 출력을 분리하지 못 하는 토크나이저 결함 추정.
 **본질**: instruct 모델의 도구 호출 능력 한계. Tool input contract 자체는 명확히 정의됨 (top-level user_intent + data_results array). SKILL.md/system.md에 더 명시화하거나 tool.py에 defensive fallback 추가하는 건 모델 한계 과적합 → **본 케이스는 코드 수정 보류** (memory `feedback_no_llm_overfit.md` 적용)
 **위치**:
 - `backend/tools/build_schema/tool.py:166` — input contract 위반 시 KeyError raise (정상 동작)
@@ -352,6 +354,8 @@ FROM dbo.TGW_TaskDailyLog td
 3. (보류) SKILL.md Examples에 정확한 호출 shape 1건 + 흔한 오류 1건 명시 — 효과 미지수 (모델이 system prompt 따르지 못 하는 결함이라)
 **연관**: D9 (instruct 모델 verbose reasoning) + D10 (chain 우회) 기반. circuit breaker B4 부재 시 무한 retry 위험.
 **우선순위**: 🟡 P2 (모델 한계 — 코드 결함 아님). Claude provider 회귀에서 재현 X 확인되면 close. 재현 시 P0 승격 + 코드 결함 재진단.
+
+**운영 결정 (2026-04-30, 사용자 명시)**: 본 LM Studio 모델로는 Cycle 2 chain 검증 불가 확정. Claude provider 회귀로 전환하여 D11/D11-b/Harmony 누수 모두 재현 X 확인 후 본 case들 일괄 close. 재현 시 환경 의존 P2 영구 잔재로 처리 (LM Studio 미지원 표기 + 모델 권장 가이드 박제).
 
 ---
 
