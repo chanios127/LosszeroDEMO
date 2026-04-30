@@ -52,17 +52,26 @@ def _strip_aliases(select_clause: str) -> str:
 def _assert_no_korean_in_select(sql: str) -> None:
     """Reject SELECT queries that use Korean column names (likely hallucinated).
 
-    Aliases via ``AS [한글명]`` are allowed — only source identifiers are checked.
+    Aliases via ``AS [한글명]`` and single-quoted Korean string literals
+    (``'한글'`` inside ``WHERE``/``CASE WHEN ... THEN``) are allowed — only
+    bare source identifiers are checked.
     """
-    select_part = _extract_select_clause(sql)
+    # Strip single-quoted string literals BEFORE locating the SELECT clause —
+    # Korean inside a quoted literal (e.g. CASE WHEN ... THEN '카테고리') is a
+    # legitimate value, not a column reference. Replacing them with empty
+    # quotes preserves the surrounding SQL structure for the alias-strip pass.
+    sql_for_check = re.sub(r"'[^']*'", "''", sql)
+    select_part = _extract_select_clause(sql_for_check)
     if not select_part:
         return  # No SELECT...FROM found — other guards will catch issues
     stripped = _strip_aliases(select_part)
     if _KOREAN.search(stripped):
         raise ValueError(
-            "Korean column name detected in SELECT clause (outside alias). "
-            "Likely hallucination — use the exact column name from `list_tables` "
-            "or the domain schema. Aliases via `AS [한글명]` are allowed."
+            "Korean column or string literal detected outside alias/literal context. "
+            "Korean is allowed ONLY in: AS [한글] aliases, single-quoted '한글' literals, "
+            "or comments. If a CASE WHEN ... THEN '카테고리' is what you want, ensure "
+            "the Korean is in single quotes. If you intended a column reference, use "
+            "the ASCII column name from the domain schema."
         )
 
 
