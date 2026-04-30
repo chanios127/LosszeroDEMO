@@ -53,10 +53,10 @@
    ============================================================ */
 :root,
 :root[data-theme="dark"] {
-  --bg:             oklch(0.16 0.008 240);   /* app background */
-  --bg-elev-1:      oklch(0.19 0.009 240);   /* sidebar, panels */
-  --bg-elev-2:      oklch(0.22 0.010 240);   /* cards, input */
-  --bg-elev-3:      oklch(0.26 0.011 240);   /* hover */
+  --bg:             oklch(0.20 0.008 240);   /* app background */
+  --bg-elev-1:      oklch(0.23 0.009 240);   /* sidebar, panels */
+  --bg-elev-2:      oklch(0.26 0.010 240);   /* cards, input */
+  --bg-elev-3:      oklch(0.30 0.011 240);   /* hover */
   --border-subtle:  oklch(0.28 0.008 240);
   --border:         oklch(0.32 0.009 240);
   --text-strong:    oklch(0.97 0.004 240);
@@ -212,9 +212,29 @@ button { cursor: pointer; background: none; border: none; padding: 0; }
   font-family: var(--font-mono);
   font-size: 0.88em;
   padding: 1px 5px;
-  background: var(--bg-elev-2);
-  color: var(--brand-400);
+  background: var(--bg-elev-3);
+  color: var(--text-strong);
   border-radius: 4px;
+}
+.prose pre {
+  margin: 0.6em 0;
+  padding: 12px 14px;
+  background: var(--bg-elev-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-strong);
+}
+.prose pre code {
+  /* Inside pre block — reset inline code styling */
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  border-radius: 0;
 }
 .prose strong { color: var(--text-strong); font-weight: 600; }
 .prose ul, .prose ol { margin: 0.4em 0; padding-left: 1.4em; }
