@@ -1,6 +1,6 @@
 # LLM Harness — Architecture
 
-> 최종 갱신: 2026-04-29 (Phase 8)
+> 최종 갱신: 2026-04-30 (Phase 11 + Phase 10 Step 3)
 
 ## 개요
 
@@ -17,20 +17,24 @@ LosszeroDEMO/
 │   ├── main.py
 │   ├── pyproject.toml
 │   ├── prompts/
-│   │   └── system_base.md               # LLM 기본 시스템 프롬프트
+│   │   ├── system_base.md               # core (anti-hallucination / 응답 언어 / name resolution / 시각화 / report pipeline)
+│   │   ├── loader.py                    # SKILL/rules loader + frontmatter parser (Phase 10 Step 3)
+│   │   └── rules/                       # cross-cutting rule (applies_to: [system_prompt])
 │   ├── agent/
-│   │   ├── loop.py                      # AgentLoop (ReAct, 10턴 + continue)
-│   │   └── events.py                    # SSE 이벤트 타입 6종
+│   │   ├── loop.py                      # AgentLoop (ReAct, 10턴 + continue, sub-agent 옵션 전파)
+│   │   └── events.py                    # SSE 이벤트 타입 9종 (subagent_* 포함)
 │   ├── llm/
-│   │   ├── base.py                      # LLMProvider ABC + load_base_system_prompt()
+│   │   ├── base.py                      # LLMProvider ABC (max_tokens / thinking_*) + load_base_system_prompt()
 │   │   ├── __init__.py                  # Provider 팩토리
-│   │   ├── claude.py                    # Anthropic 스트리밍
-│   │   └── lm_studio.py                 # OpenAI 호환 + Harmony 정규화
-│   ├── tools/                           # 각 도구는 패키지 (tool.py + description.md)
-│   │   ├── base.py                      # Tool ABC
+│   │   ├── claude.py                    # Anthropic 스트리밍 (max_retries=0)
+│   │   └── lm_studio.py                 # OpenAI 호환 + Harmony 정규화 + httpx.Timeout per-phase
+│   ├── tools/                           # 각 도구는 패키지 (tool.py + SKILL.md, sub_agent는 + system.md)
+│   │   ├── base.py                      # Tool ABC (description = loader.get_tool_description default)
 │   │   ├── db_query/
 │   │   ├── list_tables/
-│   │   └── sp_call/
+│   │   ├── sp_call/
+│   │   ├── build_report/                # sub_agent: data_results → ReportSchema
+│   │   └── build_view/                  # sub_agent: ReportSchema → ViewBundle
 │   ├── db/
 │   │   └── connection.py                # pyodbc 풀 + run_in_executor
 │   ├── domains/
@@ -139,21 +143,29 @@ LosszeroDEMO/
 | `tool_result` | 도구 실행 완료 | tool, output, rows, error, turn |
 | `llm_chunk` | LLM 텍스트 스트리밍 | delta |
 | `continue_prompt` | 10턴 도달 | turn, message |
+| `subagent_start` | sub_agent 진입 (build_report / build_view) | name |
+| `subagent_progress` | sub_agent 단계 진행 | name, stage |
+| `subagent_complete` | sub_agent 종료 | name, output_summary |
 | `final` | 에이전트 완료 | answer, viz_hint, data |
 | `error` | 에러 발생 | message |
 
+### SSE heartbeat (Phase 11 G7)
+
+reasoning 모델의 긴 silence 동안 reverse proxy idle-close를 방지하기 위해 `event_generator`가 `SSE_HEARTBEAT_SEC` 간격(default 15s)으로 SSE comment 라인(`: heartbeat\n\n`)을 흘린다. 프론트는 이를 무시 (이벤트 X) — EventSource가 connection alive로 인식만 하면 충분. vite proxy는 짝으로 `timeout: 0, proxyTimeout: 0` 설정 필요.
+
 ---
 
-## 도구 목록
+## 도구 목록 (Phase 10 Step 3 — SKILL.md 표준)
 
-각 도구는 **패키지** 구조 (`tools/{name}/{tool.py, description.md, __init__.py}`).
-description.md는 LLM 시스템 프롬프트에 그대로 주입.
+각 도구는 **패키지** 구조 (`tools/{name}/{tool.py, SKILL.md, __init__.py}`). sub_agent는 `system.md`(내부 LLM system 메시지) + `schema.py`(Pydantic 모델) 추가.
 
-| 도구 | 용도 |
-|------|------|
-| `list_tables` | 테이블명 조회 + 도메인 자동 분류 |
-| `db_query` | SELECT 쿼리 실행 (DML/DDL regex 차단) |
-| `sp_call` | 화이트리스트 SP 실행 (도메인 JSON에서 추출) |
+| 도구 | type | 용도 |
+|------|------|------|
+| `list_tables` | tool | 테이블명 조회 + 도메인 자동 분류 |
+| `db_query` | tool | SELECT 쿼리 실행 (DML/DDL regex 차단) |
+| `sp_call` | tool | 화이트리스트 SP 실행 (도메인 JSON에서 추출) |
+| `build_report` | sub_agent | 데이터 결과 → ReportSchema (블록 구조) |
+| `build_view` | sub_agent | ReportSchema → ViewBundle (인라인 렌더링용) |
 
 ---
 
@@ -252,20 +264,38 @@ Step 3: 위젯 저장 (Phase 6 예정)
 
 ## LLM Provider
 
-| Provider | 연결 | Tool Calling | Fallback / 정규화 |
+| Provider | 연결 | Tool Calling | Retry / Timeout |
 |----------|------|-------------|------------------|
-| Claude | Anthropic SDK 스트리밍 | 네이티브 tool_use | — |
-| LM Studio | httpx OpenAI 호환 | 네이티브 (모델 의존) | `<execute_sql>` 태그 추출 + Harmony 정규화 |
+| Claude | Anthropic SDK 스트리밍 | 네이티브 tool_use | `max_retries=0` — SDK auto-retry storm 차단, agent loop가 backoff 결정 |
+| LM Studio | httpx OpenAI 호환 | 네이티브 (모델 의존) | `httpx.Timeout(connect=10, read=600, write=30, pool=30)` — read 환경변수화 |
 
-### 시스템 프롬프트 외부화
+### 시스템 프롬프트 합성 흐름 (Phase 10 Step 3)
 
 ```
-[backend/prompts/system_base.md]      ← 도메인 무관 핵심 규칙 (lru_cache)
-+ [domain schema]                     ← domains/loader.domain_to_context()
-+ [tool descriptions (각 도구별 .md)]   ← tools/{name}/description.md
+[system_base.md]                              ← prompts/system_base.md (core, 다이어트됨)
++ [rules/*.md applies_to: system_prompt]      ← prompts/rules/*.md (cross-cutting)
++ [tool addenda — ## Tool: <name>]            ← tools/<name>/SKILL.md (Rules/Guards/Errors)
++ [domain schema]                             ← domains/loader.domain_to_context()
 ```
 
-도구별 description은 `backend/tools/{name}/description.md`에 분리되어 있어 코드 수정 없이 LLM 튜닝 가능.
+`backend/prompts/loader.py:build_system_prompt()`이 startup에 1회 합성 (lru_cache). 각 도구의 SKILL.md frontmatter `applies_to` 키가 `system_prompt_addendum`을 포함하면 해당 도구의 Rules/Guards/Errors 섹션이 추출되어 system prompt 끝에 `## Tool: <name>` 섹션으로 concat. `Tool.description` property는 `loader.get_tool_description(self.name)` ABC default를 사용 → SKILL.md `## Description` 섹션이 OpenAI tool schema description으로 직행.
+
+sub_agent의 내부 LLM system 메시지는 `tools/<name>/system.md`에 외부화. SKILL.md frontmatter `sub_agent_system: ./system.md`가 경로 박제. `loader.get_subagent_system(name)`이 read.
+
+새 도구 추가 워크플로우: `tools/<name>/` 디렉토리 1개 + `tool.py`(Tool ABC 상속) + `SKILL.md`(frontmatter + 섹션) → main.py에 등록만 하면 끝. description.md 작성 / 시스템 프롬프트 직접 read / `Tool.description` override 모두 불필요.
+
+### Per-request LLM tuning (Phase 11)
+
+`LLMProvider.complete`는 `max_tokens` / `thinking_enabled` / `thinking_budget` 3개 keyword-only 옵션을 받는다. data flow:
+
+```
+TweaksPanel UI → useTweaks (localStorage) → useAgentStream POST /api/query body
+   → QueryRequest.{max_tokens, thinking_enabled, thinking_budget}
+   → AgentLoop(__init__ 보관) → 매 turn provider.complete(..., max_tokens=..., thinking_*=...)
+   → sub_agent tool 인스턴스에는 set_llm_options()로 매 turn inject (turn 시작 시 동기화)
+```
+
+옵션 None 시 provider별 환경변수 default fallback (`CLAUDE_MAX_TOKENS`/`LM_STUDIO_MAX_TOKENS` 10000, `CLAUDE_THINKING_BUDGET` 4096). claude는 모델이 extended thinking을 지원하지 않으면 silent ignore + warning 1줄. lm_studio는 thinking_enabled=True 시 항상 warning + 무시. `/api/defaults` GET이 provider-aware default + thinking_supported flag를 노출 → 프론트 `useServerDefaults` hook이 startup에 fetch하여 TweaksPanel 컨트롤 활성화 결정.
 
 ### Harmony 마커 정규화 (LM Studio)
 
@@ -310,7 +340,10 @@ Step 3: 위젯 저장 (Phase 6 예정)
 |--------|-----|------|------|
 | `_sessions` | stream_key | SSE 이벤트 버퍼 | 쿼리 단위 |
 | `_conversations` | session_id | 대화 메시지 히스토리 | 세션 단위 (메모리) |
+| `_session_domains` | session_id | sticky 도메인 코드 (Phase 9 Fix 1) | 세션 단위 |
 | `_continue_gates` | stream_key | asyncio.Event (계속 대기) | 승인 완료까지 |
+
+**`_session_domains` sticky**: 첫 turn에서 `match_domain(query)`이 도메인을 발견하면 session_id에 박제. 후속 turn에서 키워드 매칭이 실패하면 sticky 도메인을 fallback으로 사용 → 사용자가 후속 질문에서 도메인 키워드를 생략해도 컨텍스트가 유지된다.
 
 ---
 
