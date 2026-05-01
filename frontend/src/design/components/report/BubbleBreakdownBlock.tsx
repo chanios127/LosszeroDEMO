@@ -54,6 +54,14 @@ function bubblesFromDataRef(
 
 function BubbleChart({ data }: { data: BubbleDatum[] }) {
   const maxSize = Math.max(1, ...data.map((d) => d.size));
+  // Normalize raw `x` values to 12-88% of canvas so bubbles spread regardless
+  // of whether the source column is a percentage (0-100) or a raw count.
+  // Single-value or constant-x falls back to the column center.
+  const xs = data.map((d) => d.x);
+  const xMin = xs.length ? Math.min(...xs) : 0;
+  const xMax = xs.length ? Math.max(...xs) : 1;
+  const xRange = xMax - xMin || 1;
+  const projectX = (raw: number): number => 12 + ((raw - xMin) / xRange) * 76;
   return (
     <div
       className="card dot-bg"
@@ -79,14 +87,15 @@ function BubbleChart({ data }: { data: BubbleDatum[] }) {
         ))}
         {data.map((d, i) => {
           const r = 18 + Math.round((d.size / maxSize) * 28);
-          const y = 30 + ((i * 17) % 50);
+          const y = 25 + ((i * 19) % 55);
+          const xPct = projectX(d.x);
           const color = `oklch(0.74 0.13 ${d.hue})`;
           return (
             <div
               key={d.label}
               style={{
                 position: "absolute",
-                left: `calc(${d.x}% - ${r}px)`,
+                left: `calc(${xPct}% - ${r}px)`,
                 top: `calc(${y}% - ${r}px)`,
                 width: r * 2,
                 height: r * 2,
