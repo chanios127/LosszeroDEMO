@@ -24,6 +24,11 @@ The `blocks` array in ReportSchema accepts EXACTLY these seven `type` values. No
 
 `chart.viz_hint` enum (exactly seven values): `"bar_chart"` / `"line_chart"` / `"pie_chart"` / `"table"` / `"number"` / `"gantt"` / `"radar"`. Anything else (`"area_chart"`, `"scatter"`, `"heatmap"`, etc.) is invalid.
 
+`chart` with `viz_hint: "gantt"` accepts two shapes:
+- **span** (start + end 둘 다): `y: ["<start_col>", "<end_col>"]` (배열).
+- **anchor** (단일 시각만, 예: 출근 시각만): `y: "<time_col>"` (단일 string). 컴포넌트가 15분 anchor marker로 자동 렌더.
+- `group_by`는 색상 그룹 전용 — 시간 컬럼을 절대 `group_by`에 넣지 말 것.
+
 `KpiMetric`: `{label, value, delta?, trend?, unit?, severity?}`. `severity` enum: `"good" | "neutral" | "warning" | "alert"`.
 
 Rules:

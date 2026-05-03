@@ -33,23 +33,38 @@ function parseT(t: unknown): { value: number; label: string } | null {
   return { value: h + min / 60, label: `${m[1].padStart(2, "0")}:${m[2]}` };
 }
 
+// Anchor mode: when only a single time column is provided (clock-in / event time),
+// render a small marker spanning ANCHOR_SPAN_HOURS for visibility.
+const ANCHOR_SPAN_HOURS = 0.25; // 15 minutes
+
 function rowsFrom(
   dataRef: DataRef | undefined,
-  fields: { label: string; start: string; end: string; group?: string },
+  fields: { label: string; start: string; end?: string | null; group?: string },
 ): Row[] {
   if (!dataRef || dataRef.mode !== "embed") return [];
+  const isSpan = !!fields.end;
   const out: Row[] = [];
   for (const r of dataRef.rows) {
     const start = parseT(r[fields.start]);
-    const end = parseT(r[fields.end]);
-    if (!start || !end) continue;
+    if (!start) continue;
+    let endValue: number;
+    let endLabel: string;
+    if (isSpan && fields.end) {
+      const end = parseT(r[fields.end]);
+      if (!end) continue;
+      endValue = end.value;
+      endLabel = end.label;
+    } else {
+      endValue = start.value + ANCHOR_SPAN_HOURS;
+      endLabel = "";
+    }
     out.push({
       label: String(r[fields.label] ?? ""),
       group: fields.group ? String(r[fields.group] ?? "") : undefined,
       start: start.value,
-      end: end.value,
+      end: endValue,
       startLabel: start.label,
-      endLabel: end.label,
+      endLabel,
     });
   }
   return out;
@@ -86,8 +101,15 @@ export function GanttBlock({ block, dataRef }: Props) {
   }
 
   const labelKey = block.x ?? "label";
-  const startKey = Array.isArray(block.y) ? block.y[0] : (block.y ?? "start");
-  const endKey = Array.isArray(block.y) ? (block.y[1] ?? "end") : "end";
+  // y as array → span (start, end). y as single string → anchor mode (clock-in).
+  // group_by stays a separate axis for color grouping (NOT misused as end-time).
+  const yIsArray = Array.isArray(block.y);
+  const startKey: string = yIsArray
+    ? (block.y as string[])[0]
+    : ((block.y as string | undefined) ?? "start");
+  const endKey: string | null = yIsArray
+    ? ((block.y as string[])[1] ?? null)
+    : null;
   const groupKey = block.group_by;
 
   const rows = rowsFrom(dataRef, {
@@ -214,7 +236,7 @@ export function GanttBlock({ block, dataRef }: Props) {
                     fontWeight: 500,
                   }}
                 >
-                  {r.startLabel} – {r.endLabel}
+                  {r.endLabel ? `${r.startLabel} – ${r.endLabel}` : r.startLabel}
                 </div>
               </div>
             </div>
