@@ -25,12 +25,45 @@ const TEAM_HUES = [230, 150, 340, 60, 295, 200];
 
 function parseT(t: unknown): { value: number; label: string } | null {
   if (typeof t !== "string") return null;
-  const m = t.match(/(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
-  return { value: h + min / 60, label: `${m[1].padStart(2, "0")}:${m[2]}` };
+  const s = t.trim();
+  if (!s) return null;
+
+  // Reject SQL DATETIME with zero time — '2026-04-30 00:00:00' or '2026-04-30T00:00:00'.
+  // The hh:mm:ss being all zero means the source column was date-only and
+  // the time portion is meaningless; skip rather than render at midnight.
+  if (/\d{4}-\d{2}-\d{2}/.test(s) && /00:00(:00)?/.test(s) &&
+      !/\b([01]?\d|2[0-3]):([0-5]?\d)\b/.test(s.replace(/00:00(:00)?/, ""))) {
+    return null;
+  }
+
+  // HH:MM[:SS] (with colon)
+  const mc = s.match(/(\d{1,2}):(\d{2})/);
+  if (mc) {
+    const h = Number(mc[1]);
+    const min = Number(mc[2]);
+    if (Number.isFinite(h) && Number.isFinite(min)) {
+      return { value: h + min / 60, label: `${String(h).padStart(2, "0")}:${mc[2]}` };
+    }
+  }
+  // HHMMSS (6 digits, no colon — common from SQL char(6) columns)
+  const m6 = s.match(/^(\d{2})(\d{2})\d{2}$/);
+  if (m6) {
+    const h = Number(m6[1]);
+    const min = Number(m6[2]);
+    if (Number.isFinite(h) && Number.isFinite(min)) {
+      return { value: h + min / 60, label: `${m6[1]}:${m6[2]}` };
+    }
+  }
+  // HHMM (4 digits)
+  const m4 = s.match(/^(\d{2})(\d{2})$/);
+  if (m4) {
+    const h = Number(m4[1]);
+    const min = Number(m4[2]);
+    if (Number.isFinite(h) && Number.isFinite(min)) {
+      return { value: h + min / 60, label: `${m4[1]}:${m4[2]}` };
+    }
+  }
+  return null;
 }
 
 // Anchor mode: when only a single time column is provided (clock-in / event time),

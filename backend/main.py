@@ -25,8 +25,12 @@ from agent.events import (
     AgentEvent,
     ErrorEvent,
     EventType,
+    FinalEvent,
     ReportProposedEvent,
     ReportProposedMeta,
+    SubAgentCompleteEvent,
+    SubAgentProgressEvent,
+    SubAgentStartEvent,
 )
 from agent.history import normalize_for_persistence, trim_history_safely
 from agent.loop import AgentLoop
@@ -34,6 +38,7 @@ from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
 from llm import get_provider
 from llm.base import Message
+from microskills import dispatch as microskill_dispatch
 from storage import Report, delete_report, get_report, list_reports, save_report
 from tools.build_schema import BuildSchemaTool
 from tools.build_view import BuildViewTool
@@ -82,6 +87,105 @@ def _purge_stale_proposals() -> None:
     stale = [k for k, v in _report_proposals.items() if not _proposal_is_fresh(v)]
     for k in stale:
         _report_proposals.pop(k, None)
+
+
+async def _run_microskill(
+    *,
+    skill,
+    match,
+    stream_key: str,
+    session_id: str,
+    query: str,
+    llm,
+) -> bool:
+    """Run a microskill in lieu of the AgentLoop. Returns True on success.
+
+    Emits the same SSE event sequence as the standard chain so the frontend
+    UI behaves identically (subagent_start/progress/complete + report_proposed
+    + final). On any failure returns False so the caller falls through to
+    the full AgentLoop.
+    """
+    W = 60
+    print("═" * W)
+    print(f"👤  {query}")
+    print(f"⚡ microskill matched: {skill.name}  params={match.params}")
+    print("═" * W, flush=True)
+
+    try:
+        _sessions[stream_key].append(SubAgentStartEvent(name=skill.name))
+        _sessions[stream_key].append(
+            SubAgentProgressEvent(name=skill.name, stage="실행 중")
+        )
+
+        result = await skill.run(
+            match.params,
+            llm=llm if match.needs_llm_extract else None,
+            original_query=query,
+        )
+
+        # Persist proposal so /api/reports/confirm/{id_temp} can save it.
+        id_temp = uuid.uuid4().hex[:12]
+        meta = {
+            "blocks": len(result.report_schema.get("blocks", [])),
+            "dataRefs": len(result.report_schema.get("data_refs", [])),
+            "schemaVersion": _REPORT_SCHEMA_VERSION,
+        }
+        _report_proposals[id_temp] = {
+            "id_temp": id_temp,
+            "schema": result.report_schema,
+            "title": result.title,
+            "summary": result.summary,
+            "domain": result.domain or _session_domains.get(session_id, ""),
+            "tags": list(result.tags),
+            "meta": meta,
+            "created_at": time.time(),
+        }
+
+        _sessions[stream_key].append(
+            SubAgentCompleteEvent(
+                name=skill.name,
+                output_summary=result.summary[:120],
+            )
+        )
+        _sessions[stream_key].append(
+            ReportProposedEvent(
+                id_temp=id_temp,
+                meta=ReportProposedMeta(
+                    blocks=meta["blocks"],
+                    dataRefs=meta["dataRefs"],
+                    domain=result.domain or _session_domains.get(session_id, ""),
+                    schemaVersion=_REPORT_SCHEMA_VERSION,
+                ),
+                schema_=result.report_schema,
+                summary=result.summary,
+            )
+        )
+        # Final answer — concise, no LLM. Frontend renders the inline report
+        # via the report_proposed event; the final text just acknowledges.
+        answer = (
+            f"📋 **{result.title}**\n\n{result.summary}\n\n"
+            f"_microskill `{skill.name}` 실행 — 보고서가 보관 대기 상태입니다._"
+        )
+        _sessions[stream_key].append(
+            FinalEvent(answer=answer, viz_hint="table", data=None)
+        )
+        # History append — keep conversation coherent for follow-ups
+        _conversations[session_id].append({"role": "assistant", "content": answer})
+
+        print(
+            f"   📄 microskill report_proposed id_temp={id_temp} "
+            f"blocks={meta['blocks']} refs={meta['dataRefs']}",
+            flush=True,
+        )
+        print("═" * W, flush=True)
+        return True
+
+    except Exception as e:
+        logger.exception("microskill %s failed: %s", skill.name, e)
+        # Fall through to standard AgentLoop on any failure (SP missing,
+        # DB error, etc.). Don't pollute session events on the way out —
+        # the main agent will start fresh.
+        return False
 
 
 def _build_report_proposed(
@@ -460,6 +564,26 @@ async def start_query(body: QueryRequest):
 
     async def _run():
         llm = get_provider()
+
+        # ── Microskill fast path ────────────────────────────────────────
+        # Rule-based intent detection BEFORE the full AgentLoop.
+        # Matched skill bypasses db_query → build_schema → build_view chain
+        # and directly emits the deterministic ReportProposedEvent.
+        ms_match = microskill_dispatch(body.query, _session_domains.get(session_id, ""))
+        if ms_match is not None:
+            skill, match = ms_match
+            ms_handled = await _run_microskill(
+                skill=skill,
+                match=match,
+                stream_key=stream_key,
+                session_id=session_id,
+                query=body.query,
+                llm=llm,
+            )
+            if ms_handled:
+                return
+            # ms_handled=False → fall through to normal AgentLoop
+
         tools = [
             ListTablesTool(), DBQueryTool(), SPCallTool(),
             BuildSchemaTool(llm=llm), BuildViewTool(llm=llm),
