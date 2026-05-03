@@ -73,8 +73,12 @@ const ANCHOR_SPAN_HOURS = 0.25; // 15 minutes
 // Greedy lane allocation so chips at adjacent times don't visually overlap.
 // Each lane = a stacked vertical row inside the bucket. Returns the lane
 // index assigned to each member (0-based).
-function assignLanes(members: Row[], minSpacingHours = 0.45): number[] {
-  // Lane endpoints — last `start` hour placed in each lane.
+//
+// minSpacingHours: time-equivalent of estimated chip width. Anchor chips
+// show just the Korean name (~3 chars + padding ≈ 60-70px). On a
+// 7~22시(15h) canvas where 1h ≈ 6.7% width, a 60px chip on a 1000px-wide
+// canvas takes ~6%, i.e. ~0.9h time-equivalent. Use 1.0h to leave margin.
+function assignLanes(members: Row[], minSpacingHours = 1.0): number[] {
   const laneEnds: number[] = [];
   const out: number[] = [];
   for (const m of members) {
@@ -158,13 +162,12 @@ function AnchorRow({
           return (
             <div
               key={`${m.label}-${idx}`}
-              className="mono tnum"
               style={{
                 position: "absolute",
                 left: `${left}%`,
                 top: 4 + lane * 22,
                 transform: "translateX(-2px)",
-                padding: "2px 6px",
+                padding: "2px 7px",
                 background: `color-mix(in oklch, ${color} 28%, var(--bg-elev-1))`,
                 border: `1px solid ${color}`,
                 borderRadius: 4,
@@ -173,16 +176,10 @@ function AnchorRow({
                 fontWeight: 500,
                 whiteSpace: "nowrap",
                 lineHeight: 1.2,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
               }}
               title={`${m.label} · ${m.startLabel}`}
             >
-              <span>{m.label}</span>
-              <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
-                {m.startLabel}
-              </span>
+              {m.label}
             </div>
           );
         })}

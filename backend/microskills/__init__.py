@@ -10,7 +10,8 @@ Skills register at import time. The dispatcher in main.py checks for a match
 on every user query before falling through to the standard AgentLoop.
 """
 from microskills.base import MicroskillBase, MicroskillMatch, MicroskillResult
-from microskills.registry import MICROSKILLS, dispatch, register
+from microskills.detector import llm_classify_and_extract
+from microskills.registry import MICROSKILLS, dispatch, find_by_name, register
 
 # Auto-register all bundled skills
 from microskills.attendance_gantt import AttendanceGanttSkill  # noqa: F401
@@ -24,4 +25,6 @@ __all__ = [
     "MICROSKILLS",
     "dispatch",
     "register",
+    "find_by_name",
+    "llm_classify_and_extract",
 ]

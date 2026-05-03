@@ -107,7 +107,12 @@ class TaskDiaryReportSkill(MicroskillBase):
     ) -> MicroskillResult:
         start: str = params["period_start"]
         end: str = params["period_end"]
-        keywords = await self._extract_keywords(original_query, llm)
+        # Pre-extracted keywords (from llm_classify_and_extract) take priority.
+        # Falls back to per-skill LLM extract or rule-based hits.
+        if "keywords" in params:
+            keywords = list(params.get("keywords") or [])
+        else:
+            keywords = await self._extract_keywords(original_query, llm)
         keywords_csv = ",".join(keywords) if keywords else ",".join(DIARY_PRESET_KEYWORDS)
 
         sets = await call_sp(

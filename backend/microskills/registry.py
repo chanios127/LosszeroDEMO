@@ -20,6 +20,11 @@ def register(skill: MicroskillBase) -> MicroskillBase:
     return skill
 
 
+def find_by_name(name: str) -> MicroskillBase | None:
+    """Lookup by skill.name."""
+    return next((s for s in MICROSKILLS if s.name == name), None)
+
+
 def dispatch(query: str, session_domain: str) -> tuple[MicroskillBase, MicroskillMatch] | None:
     """Find the first matching skill — domain-aware, highest confidence wins."""
     candidates: list[tuple[MicroskillBase, MicroskillMatch]] = []

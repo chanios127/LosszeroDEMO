@@ -31,7 +31,7 @@ AS_PRESET_KEYWORDS = [
 
 class CustomerAsPatternSkill(MicroskillBase):
     name = "customer_as_pattern"
-    domain = "3z"
+    domain = "groupware"
     description = "거래처 AS 요청 패턴 — 기간 + 키워드(LLM 추출) → SP → 고정 템플릿"
 
     def detect(self, query: str, session_domain: str) -> MicroskillMatch:
