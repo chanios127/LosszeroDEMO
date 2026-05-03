@@ -38,7 +38,11 @@ from db.connection import init_pool, close_pool
 from domains.loader import load_all_domains, match_domain, domain_to_context, get_domains_summary
 from llm import get_provider
 from llm.base import Message
-from microskills import dispatch as microskill_dispatch
+from microskills import (
+    dispatch as microskill_dispatch,
+    find_by_name as microskill_find,
+    llm_classify_and_extract as microskill_classify,
+)
 from storage import Report, delete_report, get_report, list_reports, save_report
 from tools.build_schema import BuildSchemaTool
 from tools.build_view import BuildViewTool
@@ -566,12 +570,56 @@ async def start_query(body: QueryRequest):
         llm = get_provider()
 
         # ── Microskill fast path ────────────────────────────────────────
-        # Rule-based intent detection BEFORE the full AgentLoop.
-        # Matched skill bypasses db_query → build_schema → build_view chain
-        # and directly emits the deterministic ReportProposedEvent.
-        ms_match = microskill_dispatch(body.query, _session_domains.get(session_id, ""))
-        if ms_match is not None:
-            skill, match = ms_match
+        # 1) LLM intent classifier (single call — ~1.5k input / 80 token output)
+        # 2) Skill-specific rule-based param extraction (date/period/days)
+        # 3) Inject LLM-extracted entities (keywords/vendor) into params
+        # 4) Run skill — bypasses full db_query → build_schema → build_view chain
+        # On any failure → fall through to standard AgentLoop.
+        session_domain = _session_domains.get(session_id, "")
+        skill = None
+        match = None
+
+        try:
+            classified = await microskill_classify(body.query, llm)
+        except Exception as e:
+            logger.warning("microskill classifier raised: %s", e)
+            classified = None
+
+        if classified and classified.get("intent") not in (None, "none"):
+            skill = microskill_find(classified["intent"])
+            if skill and (not skill.domain or skill.domain == session_domain):
+                # Rule-based param extraction (date/period/days). The skill's
+                # detect() trigger regex may not fire on creative phrasing —
+                # we trust the LLM intent here regardless of regex hit.
+                detected = skill.detect(body.query, session_domain)
+                params = dict(detected.params)  # may be empty if regex missed
+                # Inject LLM entities (skill 2/3 use these, skill 1 ignores)
+                if classified.get("keywords"):
+                    params["keywords"] = classified["keywords"]
+                if classified.get("vendor"):
+                    params["vendor"] = classified["vendor"]
+                # Backfill required defaults when regex missed entirely
+                if skill.name == "attendance_gantt" and "target_date" not in params:
+                    from datetime import date as _date
+                    params["target_date"] = _date.today().isoformat()
+                if skill.name == "task_diary_report" and "period_start" not in params:
+                    from datetime import date as _date, timedelta as _td
+                    today = _date.today()
+                    params["period_start"] = (today - _td(days=6)).isoformat()
+                    params["period_end"] = today.isoformat()
+                if skill.name == "customer_as_pattern" and "days" not in params:
+                    params["days"] = 90
+
+                from microskills.base import MicroskillMatch
+                match = MicroskillMatch(matched=True, params=params, needs_llm_extract=False)
+
+        # Fallback: rule-based dispatch (when LLM unavailable or classifier failed)
+        if match is None:
+            rule_hit = microskill_dispatch(body.query, session_domain)
+            if rule_hit is not None:
+                skill, match = rule_hit
+
+        if skill is not None and match is not None:
             ms_handled = await _run_microskill(
                 skill=skill,
                 match=match,
