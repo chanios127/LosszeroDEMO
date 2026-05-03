@@ -37,6 +37,127 @@ function parseT(t: unknown): { value: number; label: string } | null {
 // render a small marker spanning ANCHOR_SPAN_HOURS for visibility.
 const ANCHOR_SPAN_HOURS = 0.25; // 15 minutes
 
+// Greedy lane allocation so chips at adjacent times don't visually overlap.
+// Each lane = a stacked vertical row inside the bucket. Returns the lane
+// index assigned to each member (0-based).
+function assignLanes(members: Row[], minSpacingHours = 0.45): number[] {
+  // Lane endpoints — last `start` hour placed in each lane.
+  const laneEnds: number[] = [];
+  const out: number[] = [];
+  for (const m of members) {
+    let lane = laneEnds.findIndex((end) => m.start - end >= minSpacingHours);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(m.start);
+    } else {
+      laneEnds[lane] = m.start;
+    }
+    out.push(lane);
+  }
+  return out;
+}
+
+function AnchorRow({
+  label,
+  color,
+  members,
+}: {
+  label: string;
+  color: string;
+  members: Row[];
+}) {
+  const lanes = assignLanes(members);
+  const laneCount = Math.max(1, ...lanes.map((l) => l + 1));
+  const rowHeight = Math.max(36, 16 + laneCount * 22);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 1fr",
+        gap: 12,
+        alignItems: "stretch",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 4 }}>
+        <span
+          style={{
+            width: 4,
+            height: 22,
+            borderRadius: 2,
+            background: color,
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--text-strong)",
+            }}
+          >
+            {label}
+          </span>
+          <span
+            className="mono"
+            style={{ fontSize: 9, color: "var(--text-faint)" }}
+          >
+            {members.length}명
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          position: "relative",
+          height: rowHeight,
+          background:
+            "color-mix(in oklch, var(--bg) 60%, var(--bg-elev-1))",
+          borderRadius: 6,
+          backgroundImage:
+            "linear-gradient(to right, var(--border-subtle) 1px, transparent 1px)",
+          backgroundSize: `${100 / HOURS}% 100%`,
+        }}
+      >
+        {members.map((m, idx) => {
+          const left = Math.max(0, ((m.start - HOUR_START) / HOURS) * 100);
+          const lane = lanes[idx];
+          return (
+            <div
+              key={`${m.label}-${idx}`}
+              className="mono tnum"
+              style={{
+                position: "absolute",
+                left: `${left}%`,
+                top: 4 + lane * 22,
+                transform: "translateX(-2px)",
+                padding: "2px 6px",
+                background: `color-mix(in oklch, ${color} 28%, var(--bg-elev-1))`,
+                border: `1px solid ${color}`,
+                borderRadius: 4,
+                color: "var(--text-strong)",
+                fontSize: 11,
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+                lineHeight: 1.2,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+              }}
+              title={`${m.label} · ${m.startLabel}`}
+            >
+              <span>{m.label}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                {m.startLabel}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function rowsFrom(
   dataRef: DataRef | undefined,
   fields: { label: string; start: string; end?: string | null; group?: string },
@@ -128,6 +249,42 @@ export function GanttBlock({ block, dataRef }: Props) {
     }
   }
 
+  // Anchor mode: collapse to one row per group (or single "전체" row when no
+  // useful group_by). Members render as compact name chips along the time axis.
+  // High-cardinality group_by (>8 unique values) means it's not actually a
+  // category — we collapse to single row and ignore it.
+  const useGroupedAnchor =
+    !yIsArray &&
+    rows.length > 0 &&
+    (groupColor.size === 0 || groupColor.size > 8
+      ? false
+      : Array.from(groupColor.keys()).every((k) => k.length > 0));
+
+  type GroupBucket = { key: string; color: string; members: Row[] };
+  const groupBuckets: GroupBucket[] = (() => {
+    if (yIsArray) return [];
+    if (!useGroupedAnchor) {
+      return [
+        {
+          key: "전체",
+          color: "var(--brand-500)",
+          members: [...rows].sort((a, b) => a.start - b.start),
+        },
+      ];
+    }
+    const map = new Map<string, Row[]>();
+    for (const r of rows) {
+      const key = r.group ?? "(미분류)";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    }
+    return Array.from(map.entries()).map(([key, members]) => ({
+      key,
+      color: groupColor.get(key) ?? "var(--brand-500)",
+      members: members.sort((a, b) => a.start - b.start),
+    }));
+  })();
+
   return (
     <div className="card" style={{ padding: "var(--space-4)" }}>
       <BlockHeader title={block.title ?? "Gantt"} />
@@ -136,7 +293,7 @@ export function GanttBlock({ block, dataRef }: Props) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "92px 1fr",
+          gridTemplateColumns: "120px 1fr",
           gap: 12,
           marginBottom: 4,
         }}
@@ -161,87 +318,98 @@ export function GanttBlock({ block, dataRef }: Props) {
 
       {/* Rows */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {rows.map((r, i) => {
-          const left = Math.max(0, ((r.start - HOUR_START) / HOURS) * 100);
-          const width = Math.max(0.5, ((r.end - r.start) / HOURS) * 100);
-          const color =
-            (r.group && groupColor.get(r.group)) || "var(--brand-500)";
-          return (
-            <div
-              key={`${r.label}-${i}`}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "92px 1fr",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  style={{
-                    width: 4,
-                    height: 22,
-                    borderRadius: 2,
-                    background: color,
-                  }}
-                />
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "var(--text-strong)",
-                    }}
-                  >
-                    {r.label}
-                  </span>
-                  {r.group && (
-                    <span
-                      className="mono"
-                      style={{ fontSize: 9, color: "var(--text-faint)" }}
-                    >
-                      {r.group}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                style={{
-                  position: "relative",
-                  height: 26,
-                  background:
-                    "color-mix(in oklch, var(--bg) 60%, var(--bg-elev-1))",
-                  borderRadius: 6,
-                  backgroundImage:
-                    "linear-gradient(to right, var(--border-subtle) 1px, transparent 1px)",
-                  backgroundSize: `${100 / HOURS}% 100%`,
-                }}
-              >
+        {!yIsArray
+          ? // ── ANCHOR MODE: 1 row per group, members rendered as chips ──
+            groupBuckets.map((bucket) => (
+              <AnchorRow
+                key={bucket.key}
+                label={bucket.key}
+                color={bucket.color}
+                members={bucket.members}
+              />
+            ))
+          : // ── SPAN MODE: 1 row per entity ──
+            rows.map((r, i) => {
+              const left = Math.max(0, ((r.start - HOUR_START) / HOURS) * 100);
+              const width = Math.max(0.5, ((r.end - r.start) / HOURS) * 100);
+              const color =
+                (r.group && groupColor.get(r.group)) || "var(--brand-500)";
+              return (
                 <div
-                  className="mono tnum"
+                  key={`${r.label}-${i}`}
                   style={{
-                    position: "absolute",
-                    left: `${left}%`,
-                    width: `${width}%`,
-                    top: 3,
-                    bottom: 3,
-                    background: `color-mix(in oklch, ${color} 55%, transparent)`,
-                    border: `1px solid ${color}`,
-                    borderRadius: 4,
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: "120px 1fr",
+                    gap: 12,
                     alignItems: "center",
-                    justifyContent: "center",
-                    color: "var(--text-strong)",
-                    fontSize: 11,
-                    fontWeight: 500,
                   }}
                 >
-                  {r.endLabel ? `${r.startLabel} – ${r.endLabel}` : r.startLabel}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 4,
+                        height: 22,
+                        borderRadius: 2,
+                        background: color,
+                      }}
+                    />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "var(--text-strong)",
+                        }}
+                      >
+                        {r.label}
+                      </span>
+                      {r.group && (
+                        <span
+                          className="mono"
+                          style={{ fontSize: 9, color: "var(--text-faint)" }}
+                        >
+                          {r.group}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      position: "relative",
+                      height: 26,
+                      background:
+                        "color-mix(in oklch, var(--bg) 60%, var(--bg-elev-1))",
+                      borderRadius: 6,
+                      backgroundImage:
+                        "linear-gradient(to right, var(--border-subtle) 1px, transparent 1px)",
+                      backgroundSize: `${100 / HOURS}% 100%`,
+                    }}
+                  >
+                    <div
+                      className="mono tnum"
+                      style={{
+                        position: "absolute",
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        top: 3,
+                        bottom: 3,
+                        background: `color-mix(in oklch, ${color} 55%, transparent)`,
+                        border: `1px solid ${color}`,
+                        borderRadius: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "var(--text-strong)",
+                        fontSize: 11,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {r.endLabel ? `${r.startLabel} – ${r.endLabel}` : r.startLabel}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
       </div>
 
       {groupColor.size > 0 && (
