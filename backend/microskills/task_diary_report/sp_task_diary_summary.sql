@@ -3,7 +3,14 @@
 -- ============================================================================
 -- 사용처: backend/microskills/task_diary_report/skill.py
 -- 도메인: groupware
--- 의도: 기간 + 키워드 CSV 입력 → 다중 결과셋 (KPI / 키워드 빈도 / Top 작성자)
+-- 의도: 기간 + 키워드 CSV → 다중 결과셋
+--
+-- v3 (2026-05-03): 실 DB 메타 검증 후 재작성.
+--   - TGW_TaskDailyLog: td_TDNo, td_myUid, td_myDept, td_writeDt, td_Title,
+--                       td_Today varchar(8000) — 본문 (LIKE 검색 대상),
+--                       td_Tomorrow varchar(4000)
+--   - LZXP310T        : Uid → uName
+--   - TCD_DeptCode    : dc_DeptCd → dc_DeptNm1 (옵션, 부서명 join용)
 -- ============================================================================
 
 IF OBJECT_ID('dbo.sp_task_diary_summary', 'P') IS NOT NULL
@@ -36,25 +43,36 @@ BEGIN
 
     DECLARE @days INT = DATEDIFF(DAY, @start, @end) + 1;
 
+    -- 기간 내 일지 모음 (재사용 위해 임시 테이블)
+    DECLARE @logs TABLE (
+        td_TDNo    VARCHAR(10),
+        td_myUid   VARCHAR(20),
+        td_writeDt DATE,
+        td_Title   NVARCHAR(200),
+        td_Today   NVARCHAR(MAX)
+    );
+    INSERT INTO @logs
+    SELECT
+        td_TDNo,
+        td_myUid,
+        CONVERT(date, td_writeDt),
+        td_Title,
+        CAST(td_Today AS NVARCHAR(MAX))
+    FROM dbo.TGW_TaskDailyLog
+    WHERE CONVERT(date, td_writeDt) BETWEEN @start AND @end;
+
     -- ========================================================================
     -- 1) KPI: 총건수 / 작성자수 / 일평균 / 최다 키워드
     -- ========================================================================
-    DECLARE @total INT = (
-        SELECT COUNT(*) FROM dbo.TGW_TaskDailyLog
-        WHERE CONVERT(date, td_writeDt) BETWEEN @start AND @end
-    );
-    DECLARE @writers INT = (
-        SELECT COUNT(DISTINCT td_myUid) FROM dbo.TGW_TaskDailyLog
-        WHERE CONVERT(date, td_writeDt) BETWEEN @start AND @end
-    );
+    DECLARE @total   INT = (SELECT COUNT(*) FROM @logs);
+    DECLARE @writers INT = (SELECT COUNT(DISTINCT td_myUid) FROM @logs);
     DECLARE @top_kw NVARCHAR(50) = (
         SELECT TOP 1 k.[keyword]
         FROM @kws k
         OUTER APPLY (
             SELECT COUNT(*) AS [cnt]
-            FROM dbo.TGW_TaskDailyLog t
-            WHERE CONVERT(date, t.td_writeDt) BETWEEN @start AND @end
-              AND t.td_Today LIKE '%' + k.[keyword] + '%'
+            FROM @logs l
+            WHERE l.td_Today LIKE N'%' + k.[keyword] + N'%'
         ) c
         ORDER BY c.[cnt] DESC
     );
@@ -64,83 +82,77 @@ BEGIN
         @writers                              AS [작성자수],
         CAST(ROUND(CAST(@total AS FLOAT) / NULLIF(@days, 0), 1) AS NVARCHAR(20))
                                               AS [일평균],
-        ISNULL(@top_kw, '-')                  AS [최다키워드];
+        ISNULL(@top_kw, N'-')                 AS [최다키워드];
 
     -- ========================================================================
     -- 2) 키워드 빈도: 키워드 / 빈도 / 작성자수
     -- ========================================================================
     SELECT
         k.[keyword]                           AS [키워드],
-        SUM(c.[cnt])                          AS [빈도],
-        SUM(c.[writers])                      AS [작성자수]
+        ISNULL(c.[cnt], 0)                    AS [빈도],
+        ISNULL(c.[writers], 0)                AS [작성자수]
     FROM @kws k
     OUTER APPLY (
         SELECT
-            COUNT(*)                                AS [cnt],
-            COUNT(DISTINCT t.td_myUid)              AS [writers]
-        FROM dbo.TGW_TaskDailyLog t
-        WHERE CONVERT(date, t.td_writeDt) BETWEEN @start AND @end
-          AND t.td_Today LIKE '%' + k.[keyword] + '%'
+            COUNT(*)                          AS [cnt],
+            COUNT(DISTINCT l.td_myUid)        AS [writers]
+        FROM @logs l
+        WHERE l.td_Today LIKE N'%' + k.[keyword] + N'%'
     ) c
-    GROUP BY k.[keyword]
-    HAVING SUM(c.[cnt]) > 0
+    WHERE ISNULL(c.[cnt], 0) > 0
     ORDER BY [빈도] DESC;
 
     -- ========================================================================
-    -- 3) Top 작성자: 사용자명 / 작성건수 / 주요 키워드 (해당 기간 동안)
+    -- 3) Top 작성자: 사용자명 / 작성건수 / 주요 키워드
     -- ========================================================================
-    ;WITH writer_counts AS (
+    ;WITH wc AS (
         SELECT
-            t.td_myUid,
-            u.uName,
-            COUNT(*) AS [작성건수]
-        FROM dbo.TGW_TaskDailyLog t
-        LEFT JOIN dbo.LZXP310T u ON t.td_myUid = u.Uid
-        WHERE CONVERT(date, t.td_writeDt) BETWEEN @start AND @end
-        GROUP BY t.td_myUid, u.uName
+            l.td_myUid,
+            ISNULL(u.uName, l.td_myUid) AS uName,
+            COUNT(*)                    AS cnt
+        FROM @logs l
+        LEFT JOIN dbo.LZXP310T u ON l.td_myUid = u.Uid
+        GROUP BY l.td_myUid, u.uName
+    ),
+    top_writers AS (
+        SELECT TOP 5 td_myUid, uName, cnt FROM wc ORDER BY cnt DESC
     ),
     writer_kws AS (
         SELECT
-            t.td_myUid,
+            tw.td_myUid,
             STUFF((
-                SELECT TOP 3 ', ' + k.[keyword]
+                SELECT TOP 3 N', ' + k.[keyword]
                 FROM @kws k
                 WHERE EXISTS (
-                    SELECT 1 FROM dbo.TGW_TaskDailyLog t2
-                    WHERE t2.td_myUid = t.td_myUid
-                      AND CONVERT(date, t2.td_writeDt) BETWEEN @start AND @end
-                      AND t2.td_Today LIKE '%' + k.[keyword] + '%'
+                    SELECT 1 FROM @logs l2
+                    WHERE l2.td_myUid = tw.td_myUid
+                      AND l2.td_Today LIKE N'%' + k.[keyword] + N'%'
                 )
                 ORDER BY (
-                    SELECT COUNT(*) FROM dbo.TGW_TaskDailyLog t3
-                    WHERE t3.td_myUid = t.td_myUid
-                      AND CONVERT(date, t3.td_writeDt) BETWEEN @start AND @end
-                      AND t3.td_Today LIKE '%' + k.[keyword] + '%'
+                    SELECT COUNT(*) FROM @logs l3
+                    WHERE l3.td_myUid = tw.td_myUid
+                      AND l3.td_Today LIKE N'%' + k.[keyword] + N'%'
                 ) DESC
                 FOR XML PATH(''), TYPE
-            ).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS [주요키워드]
-        FROM (SELECT DISTINCT td_myUid FROM dbo.TGW_TaskDailyLog
-              WHERE CONVERT(date, td_writeDt) BETWEEN @start AND @end) t
+            ).value('.', 'NVARCHAR(MAX)'), 1, 2, '')   AS top_kw
+        FROM top_writers tw
     )
-    SELECT TOP 5
-        wc.uName                              AS [사용자명],
-        wc.[작성건수]                          AS [작성건수],
-        ISNULL(wk.[주요키워드], '-')          AS [주요키워드]
-    FROM writer_counts wc
-    LEFT JOIN writer_kws wk ON wc.td_myUid = wk.td_myUid
-    ORDER BY wc.[작성건수] DESC;
+    SELECT
+        tw.uName                              AS [사용자명],
+        tw.cnt                                AS [작성건수],
+        ISNULL(wk.top_kw, N'-')               AS [주요키워드]
+    FROM top_writers tw
+    LEFT JOIN writer_kws wk ON tw.td_myUid = wk.td_myUid
+    ORDER BY tw.cnt DESC;
 END
 GO
 
 -- ============================================================================
--- 등록: domains/groupware.json 의 stored_procedures 화이트리스트에 추가:
--- {
---   "name": "sp_task_diary_summary",
---   "params": [
---     {"name": "@start", "type": "DATE"},
---     {"name": "@end", "type": "DATE"},
---     {"name": "@keywords_csv", "type": "NVARCHAR(MAX)"}
---   ],
---   "description": "기간별 업무일지 KPI + 키워드 빈도 + Top 작성자 (다중 결과셋)"
--- }
+-- 등록 확인:
+--   SELECT name FROM sys.procedures WHERE name = 'sp_task_diary_summary';
+--
+-- 실행 테스트:
+--   EXEC dbo.sp_task_diary_summary @start='2026-04-01', @end='2026-04-30';
+--   EXEC dbo.sp_task_diary_summary @start='2026-04-01', @end='2026-04-30',
+--                                  @keywords_csv='재고,생산,BOM';
 -- ============================================================================
