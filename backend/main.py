@@ -31,6 +31,8 @@ from agent.events import (
     SubAgentCompleteEvent,
     SubAgentProgressEvent,
     SubAgentStartEvent,
+    ToolResultEvent,
+    ToolStartEvent,
 )
 from agent.history import normalize_for_persistence, trim_history_safely
 from agent.loop import AgentLoop
@@ -151,6 +153,41 @@ async def _run_microskill(
                 output_summary=result.summary[:120],
             )
         )
+
+        # Emit fake build_schema + build_view tool events so the frontend's
+        # standard capture path (useAgentStream) picks up reportSchema +
+        # viewBundle and renders the inline ReportContainer in the chat
+        # bubble. Without these the chat shows only the final ack text and
+        # the report sits silently in archive proposal state.
+        view_bundle = {
+            "schema": result.report_schema,
+            "blocks": list(result.view_blocks),
+        }
+        _sessions[stream_key].append(
+            ToolStartEvent(tool="build_schema", input={"microskill": skill.name}, turn=1)
+        )
+        _sessions[stream_key].append(
+            ToolResultEvent(
+                tool="build_schema",
+                output=result.report_schema,
+                rows=None,
+                turn=1,
+                error=None,
+            )
+        )
+        _sessions[stream_key].append(
+            ToolStartEvent(tool="build_view", input={"microskill": skill.name}, turn=1)
+        )
+        _sessions[stream_key].append(
+            ToolResultEvent(
+                tool="build_view",
+                output=view_bundle,
+                rows=None,
+                turn=1,
+                error=None,
+            )
+        )
+
         _sessions[stream_key].append(
             ReportProposedEvent(
                 id_temp=id_temp,
@@ -164,11 +201,11 @@ async def _run_microskill(
                 summary=result.summary,
             )
         )
-        # Final answer — concise, no LLM. Frontend renders the inline report
-        # via the report_proposed event; the final text just acknowledges.
+        # Final answer — concise. Frontend captures reportSchema + viewBundle
+        # from the fake tool_result events above and renders inline.
         answer = (
             f"📋 **{result.title}**\n\n{result.summary}\n\n"
-            f"_microskill `{skill.name}` 실행 — 보고서가 보관 대기 상태입니다._"
+            f"_microskill `{skill.name}` 실행 — 아래 보고서를 검토 후 보관/버리기 결정._"
         )
         _sessions[stream_key].append(
             FinalEvent(answer=answer, viz_hint="table", data=None)
