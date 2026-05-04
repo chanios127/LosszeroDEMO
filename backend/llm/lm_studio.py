@@ -153,9 +153,13 @@ class LMStudioProvider(LLMProvider):
             headers={"Authorization": f"Bearer {self.api_key}"},
         )
 
-    def _to_openai_messages(self, messages: list[Message]) -> list[dict]:
-        # Merge base system prompt with any injected system messages
-        system_parts = [load_base_system_prompt()]
+    def _to_openai_messages(
+        self, messages: list[Message], *, system_base: bool = True
+    ) -> list[dict]:
+        # Merge base system prompt (skip when system_base=False) + injected system messages
+        system_parts: list[str] = []
+        if system_base:
+            system_parts.append(load_base_system_prompt())
         result: list[dict] = []
         for m in messages:
             role = m["role"]
@@ -177,9 +181,10 @@ class LMStudioProvider(LLMProvider):
                         "content": m.get("content", ""),
                     }
                 )
-        # Prepend merged system message
+        # Prepend merged system message (only if non-empty)
         system_text = "\n\n".join(p for p in system_parts if p.strip())
-        result.insert(0, {"role": "system", "content": system_text})
+        if system_text:
+            result.insert(0, {"role": "system", "content": system_text})
         return result
 
     def _to_openai_tools(self, tools: list[ToolSchema]) -> list[dict]:
@@ -203,13 +208,14 @@ class LMStudioProvider(LLMProvider):
         max_tokens: int | None = None,
         thinking_enabled: bool | None = None,
         thinking_budget: int | None = None,
+        system_base: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]:
         if thinking_enabled:
             logger.warning(
                 "LM Studio does not support extended thinking; option ignored"
             )
 
-        openai_messages = self._to_openai_messages(messages)
+        openai_messages = self._to_openai_messages(messages, system_base=system_base)
         payload: dict = {
             "messages": openai_messages,
             "stream": True,

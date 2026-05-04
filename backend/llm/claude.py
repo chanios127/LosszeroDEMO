@@ -61,13 +61,15 @@ class ClaudeProvider(LLMProvider):
         ]
 
     def _to_anthropic_messages(
-        self, messages: list[Message]
+        self, messages: list[Message], *, system_base: bool = True
     ) -> tuple[str, list[dict]]:
         """Convert generic messages to Anthropic format.
         Returns (system_prompt, messages).
         """
-        # Collect system messages and merge with base prompt
-        system_parts = [load_base_system_prompt()]
+        # Collect system messages and merge with base prompt (optional)
+        system_parts: list[str] = []
+        if system_base:
+            system_parts.append(load_base_system_prompt())
         result: list[dict] = []
         for m in messages:
             role = m["role"]
@@ -115,8 +117,11 @@ class ClaudeProvider(LLMProvider):
         max_tokens: int | None = None,
         thinking_enabled: bool | None = None,
         thinking_budget: int | None = None,
+        system_base: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]:
-        system_prompt, anthropic_messages = self._to_anthropic_messages(messages)
+        system_prompt, anthropic_messages = self._to_anthropic_messages(
+            messages, system_base=system_base
+        )
         anthropic_tools = self._to_anthropic_tools(tools)
 
         default_max = int(os.environ.get("CLAUDE_MAX_TOKENS", "10000"))

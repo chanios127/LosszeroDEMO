@@ -93,5 +93,14 @@ class LLMProvider(ABC):
         max_tokens: int | None = None,
         thinking_enabled: bool | None = None,
         thinking_budget: int | None = None,
+        system_base: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]:
+        """Stream an LLM completion.
+
+        ``system_base``: when False, the harness's composed base system prompt
+        (system_base.md + rules + tool addenda — ~13k chars) is NOT prepended.
+        Use for narrow utility calls (microskill detector, classifier helpers)
+        where the bundled context is irrelevant and the extra tokens cause
+        rate-limit / 400 errors on small models.
+        """
         ...

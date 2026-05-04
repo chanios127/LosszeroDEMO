@@ -56,7 +56,9 @@ async def llm_classify_and_extract(
     ]
     text_parts: list[str] = []
     try:
-        async for ev in llm.complete(msgs, [], max_tokens=160):
+        # system_base=False: detector doesn't need the harness's 13k system prompt;
+        # it would push small models past their context window and trigger 400.
+        async for ev in llm.complete(msgs, [], max_tokens=160, system_base=False):
             if ev.type == LLMEventType.TEXT_DELTA:
                 text_parts.append(ev.delta)
             elif ev.type == LLMEventType.DONE:

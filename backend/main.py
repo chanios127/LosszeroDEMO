@@ -45,6 +45,7 @@ from microskills import (
     find_by_name as microskill_find,
     llm_classify_and_extract as microskill_classify,
 )
+from microskills.registry import _looks_like_followup as microskill_is_followup
 from storage import Report, delete_report, get_report, list_reports, save_report
 from tools.build_schema import BuildSchemaTool
 from tools.build_view import BuildViewTool
@@ -622,6 +623,17 @@ async def start_query(body: QueryRequest):
             logger.warning("microskill classifier raised: %s", e)
             classified = None
 
+        if classified and classified.get("intent") not in (None, "none"):
+            # Follow-up gate: even if LLM picked an intent, reject when the
+            # query reads like a follow-up question (no action verb + interrogative).
+            # Without this, "가장 일찍 출근한 인원은?" would re-trigger
+            # attendance_gantt instead of being answered from existing context.
+            if microskill_is_followup(body.query):
+                logger.info(
+                    "microskill: LLM picked %s but query looks like follow-up — defer to AgentLoop",
+                    classified["intent"],
+                )
+                classified = None
         if classified and classified.get("intent") not in (None, "none"):
             skill = microskill_find(classified["intent"])
             if skill and (not skill.domain or skill.domain == session_domain):
