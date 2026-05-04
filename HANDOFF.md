@@ -1,10 +1,10 @@
 # Supervisor 세션 인수인계 (HANDOFF)
 
-> 최종 갱신: 2026-04-30 19:14 KST (Cycle 1 build_report→build_schema 리네임 + UI 폴리시 7건 + Cycle 2 디자인 산출물 회수까지)
+> 최종 갱신: 2026-05-04 (Cycle 2 + Microskill 사이클 close + Demo 종료)
 > 본문을 새 Claude Code 세션의 첫 입력으로 그대로 복사해 supervisor 세션을 시작.
 > 이전 세션 내역은 git 히스토리 + `SPEC.md` / `ARCHITECTURE.md` / `ROADMAP.md` + `supervisorSnapshot.md` + `error-case.md` + `agent-prompts/` + `plans/` 가 진실 소스.
 >
-> **현 시점 진행 중 사이클**: Cycle 2 — Report 시각화 카탈로그 확장 + Archive 페이지. 외부 Claude Design 산출물 검수 완료 (`design-export/cycle2-output/`), 통합 미시작. 다음 supervisor 세션 첫 작업 = `plans/CYCLE2-design-integration.md` Phase A 진입.
+> **현 시점 진행 중 사이클**: 없음. Cycle 2 (Report Catalog Expansion + Archive) + Microskill 사이클 모두 close. PT Demo 종료. 다음 세션 첫 작업 = 사용자에게 우선순위 결정 요청 (snapshot §6 옵션 A/B/C/D).
 
 ---
 
@@ -50,7 +50,20 @@
 
 ---
 
-### 현재 프로젝트 상태 (Phase 11 + Phase 10 Step 3 종료 시점, main HEAD `f9c1e39`)
+### 현재 프로젝트 상태 (Cycle 2 + Microskill close 시점, main HEAD `2d6b0f2`)
+
+**최근 commits 흐름** (2026-04-30 ~ 05-04):
+- `3f3b6b0` Cycle 2 Phase A (design types + 5 신블록 + ReportContainer + ProposalCard)
+- `d5939a9` Cycle 2 Phase B merge (Pydantic 미러 + report_generate + storage + /api/reports + report_proposed)
+- `f751cca` Cycle 2 Phase C merge (ReportArchivePage + useReportArchive + useReportProposal + AgentChatPage HITL)
+- `e51b664` AppShell `report-demo`→`report-archive` + Cycle 2 close
+- `f061f8f` 5 gold seed reports
+- `756958d` Microskill 인프라 + 3 skill + AgentLoop 통합 + GanttBlock parseT 보강
+- `1cc74e7` SP 본문 재작성 (LosszeroDB_GW skill로 메타 검증)
+- `ae4d174` microskill chat inline ReportContainer (fake build_schema/build_view tool events)
+- `c817768` LM Studio 400 회피 (system_base 옵션) + follow-up 게이트
+- `16fc09d` history inject (follow-up SP 재호출 0회)
+- `2d6b0f2` enrich 단계 (LLM 풍성한 headline + insights + markdown narrative)
 
 #### 완료 (Phase 6.5 ~ Phase 11)
 
@@ -88,8 +101,31 @@
 - **Backend (`7a45c17`)**: `LLMProvider.complete` keyword-only 옵션 확장 (max_tokens / thinking_*) + claude max_retries=0 + lm_studio httpx.Timeout per-phase 환경변수화 + AgentLoop sub-agent 옵션 propagate + build_schema `_truncate_data_results` + `/api/defaults` endpoint + SSE event_generator heartbeat 15s
 - **Frontend (`4a529d1`)**: TweaksPanel "LLM" 섹션 (Slider + Thinking Toggle + budget) + Slider primitive + useServerDefaults hook + useTweaks 확장 + AssistantBubble F7 null guard + vite SSE-safe proxy
 
-**부수 인프라 (이 사이클들 사이)**:
-- diag(observability) — provider 예외 catch broader + provider-aware startup banner (G4/G5)
+**Cycle 1 build_report → build_schema 리네임 (2026-04-30)**:
+- `4dc8d9e..2c1c15d` 4 commits. ReportSchema 자료구조명 보존. BUILD_REPORT_MAX_* env var는 Phase 12 잔재.
+
+**Cycle 2 — Report Catalog Expansion + Archive (2026-04-30 ~ 05-01)**:
+- **Phase A `3f3b6b0`** (design types + 5 신블록 + ReportContainer dispatch + ReportProposalCard props-only)
+- **Phase B `53eafe9` + merge `d5939a9`** (Pydantic 미러 7 블록 + report_generate sub_agent + storage/reports.py + /api/reports CRUD + report_proposed SSE event + frontend events.ts mirror)
+- **Phase C `7c98f7b` + merge `f751cca`** (ReportArchivePage + useReportArchive + useReportProposal hook + AgentChatPage HITL sticky bar + App.tsx 라우팅)
+- **Close `e51b664`** (AppShell `report-demo`→`report-archive` + 라벨 "보고서 보관함" + snapshot 갱신)
+
+**Microskill 사이클 — 결정론적 백본 + LLM enrich (2026-05-03 ~ 05-04)**:
+- 의도: high-frequency intent 3종 LLM 비용/지연 ↓ + 시연 안정성 (LM Studio 경량 모델 한계 회피)
+- `backend/microskills/` 인프라 (base ABC + registry + detector + _helpers + 3 skill 디렉토리)
+- 3 skill: `attendance_gantt` (출근 간트) + `task_diary_report` (업무일지) + `customer_as_pattern` (거래처 AS)
+- SP DDL 동봉 + groupware whitelist 등록 (LosszeroDB_GW skill로 메타 검증 후 v3 재작성)
+- main.py `_run_microskill` 통합 (LLM 분류 → follow-up 게이트 → skill.run → enrich → fake build_schema/build_view → ReportProposed → final → history inject)
+- LLMProvider `system_base` 옵션 추가 (작은 모델 13k 시스템 프롬프트 회피)
+- GanttBlock anchor 모드 (출근시각만, group_by별 row + 이름 chip + 충돌 lane 분리) + parseT DATETIME 영시간 skip + HHMMSS/HHMM 무콜론 인식
+- TweaksPanel max_turns Slider 1~50
+
+**PT Demo 종료 (2026-05-04)**:
+- 골드 시드 5건 (`seed/reports/gold-*.json`) + 시연 매뉴얼 (`docs/pitch/`)
+- 라이브 시연 시퀀스 통과 (Skill 1 → follow-up → Cross-skill → ReportArchivePage 둘러보기)
+
+**부수 인프라**:
+- diag(observability) — provider 예외 catch broader + provider-aware startup banner
 - debug-hotfixer 세션 표준 (`debugHotfixerSnapshot.md`) — error 분석 sub-supervisor
 
 #### 알려진 미완성 / 후보 작업 (자세한 내용은 `supervisorSnapshot.md` §16 + `error-case.md` 잔재 + `plans/` 참조)
@@ -101,8 +137,9 @@
 - D2 — 영문 컬럼 환각 (도메인 schema 화이트리스트, 보강 C)
 
 **Phase 12 후보** (사전 plan 박제됨 — `plans/PHASE12-main-split.md`):
-- main.py 638줄 3-split (`app.py` + `session.py` + `orchestration.py`)
-- LLM helper 추출 (build_schema/build_view 중복 ~80줄 → `llm/helpers.py:call_llm_for_json`)
+- main.py ~900줄 (microskill 통합 후 추가) → `app.py` + `session.py` + `orchestration.py` 3-split
+- LLM helper 추출 (build_schema/build_view/report_generate 중복 ~80줄 → `llm/helpers.py:call_llm_for_json`)
+- microskill `_run_microskill` + `_build_report_proposed` + capture-emit 패턴도 orchestration.py로 이동 후보
 
 **중기 (Phase 12 후)**:
 - Phase 10 Step 4 — `backend/agents/` 디렉토리 + SubAgent 카탈로그 README
