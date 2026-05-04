@@ -211,8 +211,38 @@ async def _run_microskill(
         _sessions[stream_key].append(
             FinalEvent(answer=answer, viz_hint="table", data=None)
         )
-        # History append — keep conversation coherent for follow-ups
-        _conversations[session_id].append({"role": "assistant", "content": answer})
+
+        # ── History context for follow-ups ──────────────────────────────
+        # Inject the actual SP rows into _conversations so the next turn's
+        # AgentLoop can answer "가장 일찍 출근한 인원은?" type follow-ups
+        # WITHOUT re-running the SP. Without this, the assistant ack only
+        # appears in history and the LLM has to re-fetch.
+        data_block_parts: list[str] = []
+        for dr in result.report_schema.get("data_refs", []):
+            if dr.get("mode") != "embed":
+                continue
+            rows = dr.get("rows") or []
+            cols = [c.get("name") for c in (dr.get("columns") or [])]
+            sample = rows[:50]
+            omitted = len(rows) - len(sample)
+            note = f"  ... ({omitted} more rows omitted)" if omitted else ""
+            data_block_parts.append(
+                f"[data_ref id={dr.get('id')}] columns={cols}\n"
+                + json.dumps(sample, ensure_ascii=False, default=str)
+                + note
+            )
+        data_block = "\n\n".join(data_block_parts) if data_block_parts else "(no embedded rows)"
+        params_json = json.dumps(match.params, ensure_ascii=False, default=str)
+
+        history_msg = (
+            f"{answer}\n\n"
+            f"---\n"
+            f"<microskill_data skill=\"{skill.name}\" params={params_json}>\n"
+            f"{data_block}\n"
+            f"</microskill_data>\n"
+            f"_(이 데이터 블록은 follow-up 질의 답변용 — 사용자에게 노출되지 않음)_"
+        )
+        _conversations[session_id].append({"role": "assistant", "content": history_msg})
 
         print(
             f"   📄 microskill report_proposed id_temp={id_temp} "
