@@ -42,6 +42,7 @@ from llm import get_provider
 from llm.base import Message
 from microskills import (
     dispatch as microskill_dispatch,
+    enrich_microskill_report,
     find_by_name as microskill_find,
     llm_classify_and_extract as microskill_classify,
 )
@@ -129,6 +130,20 @@ async def _run_microskill(
             llm=llm if match.needs_llm_extract else None,
             original_query=query,
         )
+
+        # ── LLM enrichment pass ─────────────────────────────────────────
+        # Take the raw SP-derived report and let the LLM produce a richer
+        # headline + 5-7 insights + analytical markdown narrative block.
+        # Failure-safe (any LLM error returns result unchanged).
+        _sessions[stream_key].append(
+            SubAgentProgressEvent(name=skill.name, stage="분석 중")
+        )
+        try:
+            result = await enrich_microskill_report(
+                result, llm=llm, original_query=query
+            )
+        except Exception as e:
+            logger.warning("microskill %s enrich raised: %s", skill.name, e)
 
         # Persist proposal so /api/reports/confirm/{id_temp} can save it.
         id_temp = uuid.uuid4().hex[:12]
