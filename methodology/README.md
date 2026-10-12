@@ -9,7 +9,7 @@
 ```bash
 cp -r methodology/ <new-project>/
 ```
-그 후 `templates/` 디렉토리의 빈 파일들을 프로젝트 루트로 옮기고 placeholder를 채우면 됨.
+그 후 [templates/BOOTSTRAP-PROMPT.md](templates/BOOTSTRAP-PROMPT.md)를 새 프로젝트의 첫 Claude Code 세션에 paste — methodology는 이식하되 `agent-prompts/` / `plans/` / 루트 운영 문서는 해당 프로젝트 실태를 조사해 처음부터 재구축하도록 안내함. (수동으로 하려면 `templates/` 디렉토리의 빈 파일들을 프로젝트 루트로 옮기고 placeholder를 직접 채우면 됨.)
 
 ## 인덱스
 
